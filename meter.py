@@ -29,7 +29,7 @@ from scapy.all import IP, TCP, PcapReader
 from capture import Capture, MarkerLog, write_info
 
 FROZEN = getattr(sys, "frozen", False)  # rodando como .exe (PyInstaller)
-VERSION = "1.3.0"  # mudar a cada release (o .exe compara com a última release do GitHub)
+VERSION = "1.3.1"  # mudar a cada release (o .exe compara com a última release do GitHub)
 UPDATE_REPO = "Lucas-Amaralz/DPS-Meter-BDO"
 UPDATE_ASSET = "DPS-Meter-BDO.zip"
 UPDATE_CHECK_EVERY = 3600  # s
@@ -833,7 +833,7 @@ class Session:
             left = actor not in self.combat.party and actor in self.combat.past_party
         me = self.is_me(actor)
         name = (self.names.get(actor) or self.party_name(actor) or known
-                or (self.my_name if me else None) or f"{actor:08x}")
+                or (self.my_name if me else None) or ("Você" if me else f"{actor:08x}"))
         if me:  # "(você)" só no resumo.txt; na janela o contorno dourado já indica
             return f"{name} (você)" if mark_me else name
         return f"{name} (saiu)" if left else name
