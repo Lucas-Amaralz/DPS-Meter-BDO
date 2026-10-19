@@ -1,0 +1,24 @@
+# Ambiente Python
+.venv/
+__pycache__/
+*.pyc
+
+# Dados pessoais e de outros jogadores (gerados ao usar o meter)
+capturas/
+config.json
+pt_cache.json
+nomes_cache.json
+
+# Ícones das classes: arte da Pearl Abyss, baixada no PC de cada um na 1ª abertura
+icones/
+
+# Saída do empacotamento (o .zip vai como Release, não no código)
+empacotar/build/
+empacotar/dist/
+empacotar/*.spec
+empacotar/*.zip
+empacotar/build.log
+*.pcap
+
+# Ferramentas locais (gh portátil)
+.tools/

@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DPS Meter BDO</title>
+<meta name="description" content="Medidor de dano (DPS meter) para Black Desert: veja o dano e o DPS de cada pessoa da sua pt.">
+<style>
+  :root {
+    --bg: #0f1115; --panel: #171a21; --line: #2a2f3a; --fg: #e8eaed; --muted: #9aa1ab;
+    --gold: #e0a83a; --gold-soft: #3a2a12; --red: #ff8a7a; --green: #7fe0a0; --blue: #8ac4ff;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.6 "Segoe UI", system-ui, sans-serif; }
+  a { color: var(--gold); }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 0 16px; }
+  header { padding: 56px 0 32px; text-align: center; }
+  h1 { font-size: clamp(2rem, 6vw, 3.2rem); margin: 0 0 8px; letter-spacing: .5px; }
+  h1 span { color: var(--gold); }
+  .tag { color: var(--muted); font-size: 1.1rem; margin: 0 auto 28px; max-width: 620px; }
+  .btn { display: inline-block; background: var(--gold); color: #1a1205; font-weight: 700; font-size: 1.15rem;
+         padding: 14px 32px; border-radius: 12px; text-decoration: none; box-shadow: 0 6px 24px #e0a83a33; }
+  .btn:hover { filter: brightness(1.08); }
+  .small { color: var(--muted); font-size: .9rem; margin-top: 10px; }
+  .shot { display: block; margin: 36px auto 0; max-width: 100%; border-radius: 12px;
+          border: 1px solid var(--line); box-shadow: 0 12px 40px #0008; }
+  section { padding: 36px 0; border-top: 1px solid var(--line); }
+  h2 { font-size: 1.5rem; margin: 0 0 18px; }
+  .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px; }
+  .card b.n { display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 50%;
+              background: var(--gold-soft); color: var(--gold); margin-right: 8px; }
+  .card h3 { margin: 0 0 6px; font-size: 1.05rem; }
+  .card p { margin: 0; color: var(--muted); }
+  .pill { display: inline-block; font-size: .75rem; font-weight: 700; padding: 2px 8px; border-radius: 6px; margin-right: 6px; }
+  .pve { background: #1f4a2e; color: var(--green); } .pvp { background: #1f3a5a; color: var(--blue); }
+  .boss { background: #5a1f1f; color: var(--red); }
+  .warn { background: #2a1a12; border: 1px solid #6b4d12; border-radius: 12px; padding: 18px 20px; }
+  .warn h2 { color: var(--gold); }
+  ul { padding-left: 20px; } li { margin: 4px 0; }
+  kbd { background: var(--panel); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 6px;
+        padding: 1px 7px; font-size: .9em; }
+  footer { padding: 28px 0 48px; color: var(--muted); font-size: .9rem; text-align: center; border-top: 1px solid var(--line); }
+</style>
+</head>
+<body>
+<header class="wrap">
+  <h1>DPS Meter <span>BDO</span></h1>
+  <p class="tag">Medidor de dano para <b>Black Desert</b>. Uma janelinha por cima do jogo mostra o
+    <b>DPS</b>, o <b>dano total</b> e a <b>classe</b> de cada pessoa da sua pt.</p>
+  <a class="btn" href="https://github.com/Lucas-Amaralz/DPS-Meter-BDO/releases/latest/download/DPS-Meter-BDO.zip">Baixar para Windows</a>
+  <div class="small">Windows 10/11 · gratuito · <a href="https://github.com/Lucas-Amaralz/DPS-Meter-BDO">código no GitHub</a></div>
+  <img class="shot" src="img/meter.png" alt="Janela do DPS Meter BDO com o dano de cada jogador (exemplo)" width="380" height="250">
+  <div class="small">Exemplo com nomes fictícios</div>
+</header>
+
+<section class="wrap">
+  <h2>Como instalar</h2>
+  <div class="steps">
+    <div class="card"><h3><b class="n">1</b>Baixe e extraia</h3>
+      <p>Clique em <b>Baixar</b>, depois botão direito no .zip → <b>Extrair tudo</b>. Deixe o
+        <code>DPSMeterBDO.exe</code> dentro da pasta.</p></div>
+    <div class="card"><h3><b class="n">2</b>Abra o programa</h3>
+      <p>Se o Windows avisar "protegeu o computador": <b>Mais informações → Executar assim mesmo</b>.</p></div>
+    <div class="card"><h3><b class="n">3</b>Instale o Npcap</h3>
+      <p>Só na 1ª vez: clique na faixa dourada <b>"CLIQUE AQUI"</b>. O instalador oficial abre; clique em
+        <b>I Agree → Install</b>. Pronto!</p></div>
+  </div>
+  <p class="small">Para ver nomes e classes da pt, entre na pt (ou troque de canal) com o meter aberto.</p>
+</section>
+
+<section class="wrap">
+  <h2>O que ele faz</h2>
+  <div class="steps">
+    <div class="card"><h3><span class="pill pve">PVE</span>Caça</h3>
+      <p>Dano e DPS de cada um da pt nos monstros. Conta só o tempo em que cada pessoa estava batendo.</p></div>
+    <div class="card"><h3><span class="pill boss">BOSS</span>Boss e DG</h3>
+      <p>O tempo é a luta inteira, com fases e pausas, ideal para comparar runs.</p></div>
+    <div class="card"><h3><span class="pill pvp">PVP</span>Duelo, arena, guerra</h3>
+      <p>Dano entre jogadores perto de você: causado, recebido e abates/mortes.</p></div>
+  </div>
+  <ul>
+    <li>Janela <b>fantasma</b>: o mouse passa direto para o jogo e ela nunca rouba o teclado.
+      <kbd>ALT</kbd>+<kbd>X</kbd> destrava para mover, redimensionar e configurar.</li>
+    <li>Nomes, classes e ícones automáticos; reconhece você sozinho.</li>
+    <li>Copie o ranking com um clique para colar no chat ou no Discord.</li>
+  </ul>
+</section>
+
+<section class="wrap">
+  <div class="warn">
+    <h2>Antes de usar: existe risco</h2>
+    <p>Os termos de uso da Pearl Abyss <b>proíbem</b> programas de terceiros que leem dados do jogo,
+      e isso inclui este meter. <b>Use por sua conta e risco</b>, de preferência testando antes numa conta secundária.</p>
+    <p>Por que o risco de detecção é baixo: o meter é <b>100% passivo</b>.</p>
+    <ul>
+      <li><b>Não</b> lê nem altera a memória do jogo, <b>não</b> injeta código, <b>não</b> mexe nos arquivos do BDO.</li>
+      <li><b>Não</b> envia nada ao servidor e <b>não</b> automatiza ações (não é bot nem macro).</li>
+      <li>Só lê <b>cópias</b> do tráfego de rede que já chega ao seu PC, como o Wireshark.</li>
+    </ul>
+    <p>"Difícil de detectar" não é "permitido". O mais comum é alguém ser punido por <b>denúncia</b> ou por
+      <b>prints publicados</b>, então evite postar prints do meter.</p>
+  </div>
+</section>
+
+<footer class="wrap">
+  DPS Meter BDO · projeto independente, sem relação com a Pearl Abyss · Black Desert é marca da Pearl Abyss<br>
+  <a href="https://github.com/Lucas-Amaralz/DPS-Meter-BDO#como-funciona-o-que-foi-feito-passo-a-passo">Como funciona</a> ·
+  <a href="https://github.com/Lucas-Amaralz/DPS-Meter-BDO/releases">Todas as versões</a>
+</footer>
+</body>
+</html>

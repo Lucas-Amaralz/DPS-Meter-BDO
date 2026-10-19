@@ -1,0 +1,101 @@
+DPS METER BDO - medidor de dano (DPS) para Black Desert
+========================================================
+
+Mostra numa janelinha por cima do jogo quanto de dano cada pessoa da sua pt
+está causando: dano total, DPS, porcentagem, classe e quem bateu mais.
+
+
+ANTES DE TUDO: LEIA O AVISO
+---------------------------
+Este programa lê o tráfego de rede do jogo para calcular o dano. Ele NÃO mexe
+nos arquivos do jogo nem na memória dele, mas programas de terceiros que leem
+dados do jogo são proibidos pelos termos de uso da Pearl Abyss.
+Existe risco de punição na conta. Use por sua conta e risco.
+
+
+INSTALAÇÃO (só na primeira vez)
+-------------------------------
+1. Extraia esta pasta inteira (DPS-Meter-BDO) para onde quiser, por exemplo
+   Documentos. Não tire o DPSMeterBDO.exe de dentro da pasta.
+2. Abra o DPSMeterBDO.exe.
+3. Se aparecer a faixa dourada "Npcap não instalado: CLIQUE AQUI", clique nela.
+   O meter baixa o instalador oficial do Npcap (npcap.com) e abre para você:
+   aceite o aviso do Windows e clique em "I Agree" / "Install" / "Finish",
+   com as opções padrão. O Npcap é o que permite ler o tráfego de rede (o
+   Wireshark usa o mesmo). Quando terminar, o meter reinicia sozinho.
+   Se o download falhar, ele abre o site npcap.com para você baixar por lá.
+
+O Windows pode mostrar "O Windows protegeu o computador" na primeira vez.
+Clique em "Mais informações" e depois em "Executar assim mesmo". Alguns
+antivírus também reclamam de programas feitos em Python; é um alarme falso
+comum nesse tipo de programa.
+
+
+COMO USAR
+---------
+1. Abra o DPSMeterBDO.exe (pode ser antes ou depois do jogo).
+2. Entre no jogo com o seu personagem. A janela mostra "procurando o jogo"
+   até encontrar.
+3. Para aparecerem os NOMES e as CLASSES da pt: com o meter aberto, entre na
+   pt (ou saia e entre de novo). Quem entrar depois aparece sozinho.
+4. O meter descobre sozinho qual linha é você (aparece "(você)" com contorno
+   dourado). Seu dano aparece mesmo jogando sem pt. Se ele errar: ALT+X,
+   botão direito no seu nome, "Sou eu".
+5. Só aparecem você e os membros da sua pt; outros jogadores não entram.
+   Se você sair da pt, em uns 35 segundos fica só você na lista.
+
+Na primeira vez que abrir, ele baixa os ícones das classes do site oficial do
+BDO (precisa de internet). Até terminar, aparece a sigla da classe (ex.: MG).
+
+
+A JANELA
+--------
+- Ela é "fantasma": o mouse passa direto para o jogo, então você pode deixar
+  em cima da tela sem atrapalhar.
+- ALT+X destrava a janela (fica com a borda dourada). Aí você pode:
+    * arrastar pela barra de cima;
+    * redimensionar pelo canto de baixo à direita;
+    * mudar a opacidade na barrinha do rodapé;
+    * clicar com o botão direito num jogador: renomear, "Sou eu", copiar ranking;
+    * zerar a contagem (botão de setas em cima), por exemplo antes de um boss;
+    * botão PVE (padrão): monstros normais. Pausas maiores que 5 segundos
+      não contam e o DPS de cada um usa o tempo em que estava batendo;
+    * botão BOSS: para boss e dungeon. O tempo passa a ser a luta inteira
+      (do primeiro ao último golpe, com pausas e troca de fase), e o DPS de
+      todos é calculado sobre esse tempo. Clique de novo para voltar ao
+      modo grind. Trocar de modo zera a contagem;
+    * botão PVP: mostra o dano entre jogadores perto de você (duelo, arena,
+      guerra de nó): DPS, dano causado, dano recebido (em vermelho) e
+      abates/mortes. Inclui jogadores de fora da pt. Clique de novo para sair;
+    * copiar o ranking para colar no chat ou no Discord.
+- ALT+X de novo trava. Se esquecer, ela trava sozinha depois de 15 segundos.
+- Se o ALT+X estiver ocupado por outro programa, o meter usa CTRL+ALT+X
+  (o rodapé mostra qual atalho está valendo).
+- Ela nunca rouba o teclado do jogo (seu WASD continua funcionando).
+
+
+O QUE OS NÚMEROS QUEREM DIZER
+-----------------------------
+- Número amarelo (ex.: 1,5M/s): DPS, o dano por segundo enquanto a pessoa
+  estava batendo. É o melhor número para comparar jogadores.
+- Número menor: dano total da luta.
+- Porcentagem: quanto daquele dano foi de cada um.
+- "sem dano": a pessoa está na pt mas não bateu (ou está longe de você).
+
+
+LIMITAÇÕES
+----------
+- O jogo só manda para você o que acontece perto de você. Quem estiver
+  caçando longe aparece como "sem dano", mesmo batendo.
+- Só aparecem os membros da sua pt.
+- Se o jogo atualizar e o meter parar de contar, é preciso uma versão nova
+  do meter.
+
+
+ARQUIVOS QUE ELE CRIA (na mesma pasta)
+--------------------------------------
+- capturas\  : um resumo de cada sessão (resumo.txt) e a lista de golpes.
+               Pode apagar quando quiser.
+- icones\    : os ícones das classes baixados do site oficial.
+- config.json, pt_cache.json, nomes_cache.json: suas preferências e os nomes
+  que ele já conhece.
