@@ -29,7 +29,7 @@ from scapy.all import IP, TCP, PcapReader
 from capture import Capture, MarkerLog, write_info
 
 FROZEN = getattr(sys, "frozen", False)  # rodando como .exe (PyInstaller)
-VERSION = "1.3.3"  # mudar a cada release (o .exe compara com a última release do GitHub)
+VERSION = "1.3.4"  # mudar a cada release (o .exe compara com a última release do GitHub)
 UPDATE_REPO = "Lucas-Amaralz/DPS-Meter-BDO"
 UPDATE_ASSET = "DPS-Meter-BDO.zip"
 UPDATE_CHECK_EVERY = 3600  # s
@@ -88,6 +88,7 @@ COMBAT_GAP = 5.0  # segundos sem golpe que não contam como tempo de combate
 BOSS_MIN_HP = 3_000_000
 BOSS_DEATH_FRAC = 0.002  # vida <= 0,2% da máxima = morreu (o golpe final nem sempre chega)
 BOSS_LOW_FRAC, BOSS_IDLE_DEATH = 0.03, 6.0  # ou: < 3% e 6 s sem levar golpe
+BOSS_ABANDON = 60.0  # s sem nenhum golpe da pt: luta largada, o relógio para
 UNFINISHED_MIN_TIME = 5.0  # s de combate para guardar no histórico ao zerar/fechar
 
 
@@ -616,8 +617,14 @@ class Combat:
         if True:
             if self.pvp_mode:
                 return self._pvp_snapshot()
-            if self.boss_mode:  # a luta inteira, do 1º ao último golpe da pt
-                tempo = (self.last_hit - self.first_hit) if self.first_hit is not None else 0.0
+            if self.boss_mode:  # a luta inteira, do 1º golpe da pt até agora (ou até o boss morrer)
+                if self.first_hit is None:
+                    tempo = 0.0
+                elif (self.enc_state == "active"  # o relógio anda mesmo sem golpes (boss inalvejável)
+                      and (self.last_t or 0) - self.last_hit < BOSS_ABANDON):
+                    tempo = max(self.last_t or 0, self.last_hit) - self.first_hit
+                else:
+                    tempo = self.last_hit - self.first_hit
             else:  # grind: pausas maiores que COMBAT_GAP não contam
                 tempo = self.combat_time
             dur = max(tempo, 1.0)
