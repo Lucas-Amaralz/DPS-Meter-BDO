@@ -29,7 +29,7 @@ from scapy.all import IP, TCP, PcapReader
 from capture import Capture, MarkerLog, write_info
 
 FROZEN = getattr(sys, "frozen", False)  # rodando como .exe (PyInstaller)
-VERSION = "1.3.4"  # mudar a cada release (o .exe compara com a última release do GitHub)
+VERSION = "1.3.5"  # mudar a cada release (o .exe compara com a última release do GitHub)
 UPDATE_REPO = "Lucas-Amaralz/DPS-Meter-BDO"
 UPDATE_ASSET = "DPS-Meter-BDO.zip"
 UPDATE_CHECK_EVERY = 3600  # s
@@ -1263,6 +1263,7 @@ class MeterWindow:
         self.view = None  # None (normal), ("resumo", luta, automático?) ou ("historico",)
         self.view_hits = []  # áreas clicáveis do resumo/histórico: (x1, y1, x2, y2, ação)
         self.update_ready = False
+        self.banner = None  # faixa clicável no topo (ex.: "update")
         self.mtimes = self.read_mtimes()
         cfg = load_config()
         if cfg.get("acabou_de_atualizar"):
@@ -1308,6 +1309,10 @@ class MeterWindow:
                                  cursor="hand2")
         self.boss_btn.pack(side="left", padx=(0, 4))
         self.boss_btn.bind("<Button-1>", lambda e: self.toggle_boss())
+        self.guide_btn = tk.Label(title, text="GUIA", font=(UI, 7, "bold"), padx=6, pady=1,
+                                  cursor="hand2", bg="#262a33", fg=MUTED)
+        self.guide_btn.pack(side="left", padx=(0, 4))
+        self.guide_btn.bind("<Button-1>", lambda e: self.toggle_guide())
         self.paint_boss_btn()
         # linha de informações: total, DPS da pt e tamanho da pt (sempre cabe)
         info = tk.Frame(shell, bg=BG)
@@ -1409,23 +1414,7 @@ class MeterWindow:
         return out
 
     def check_update(self):
-        if FROZEN:
-            if UPDATER and UPDATER.ready:
-                idle = time.time() - self.session.combat.last_hit_wall > UPDATE_IDLE
-                if idle and not self.typing and self.nofocus.locked:
-                    self.flash = (f"atualizando para a versão {UPDATER.ready[0]}...", time.time() + 5)
-                    try:
-                        UPDATER.apply()
-                        self.root.after(800, self.close)
-                        return
-                    except Exception:
-                        import tempfile
-                        import traceback
-                        with open(Path(tempfile.gettempdir()) / "DPSMeterBDO_atualizacao.log", "a",
-                                  encoding="utf-8") as f:
-                            f.write(traceback.format_exc())
-                        UPDATER.ready = None  # falhou: segue na versão atual
-            self.root.after(2000, self.check_update)
+        if FROZEN:  # no .exe a versão nova só é instalada quando a pessoa clica no aviso
             return
         if not self.update_ready and self.read_mtimes() != self.mtimes:
             self.update_ready = True
@@ -1661,6 +1650,25 @@ class MeterWindow:
             return
         if self.need_npcap and e.y < 26 and self.npcap_state is None:
             self.install_npcap()
+        elif self.banner == "update" and e.y < 26:
+            self.install_update()
+
+    def install_update(self):
+        """Clique no aviso de versão nova: fecha, troca os arquivos e abre a versão nova."""
+        if not (UPDATER and UPDATER.ready):
+            return
+        self.flash = (f"atualizando para a versão {UPDATER.ready[0]}...", time.time() + 5)
+        try:
+            UPDATER.apply()
+            self.root.after(800, self.close)
+        except Exception:
+            import tempfile
+            import traceback
+            with open(Path(tempfile.gettempdir()) / "DPSMeterBDO_atualizacao.log", "a",
+                      encoding="utf-8") as f:
+                f.write(traceback.format_exc())
+            UPDATER.ready = None  # falhou: segue na versão atual
+            self.flash = ("a atualização falhou: baixe a versão nova pelo site", time.time() + 8)
 
     def install_npcap(self):
         self.npcap_state = "baixando"
@@ -1761,6 +1769,7 @@ class MeterWindow:
         self.rows = []
         # faixa de aviso quando faltam nomes (ex.: meter aberto com a pt já formada)
         self.rows_y0 = 0
+        self.banner = None
         if self.need_npcap and npcap_installed():
             self.need_npcap = False
             self.flash = ("Npcap instalado! reiniciando o meter...", time.time() + 5)
@@ -1771,6 +1780,14 @@ class MeterWindow:
                    "instalando": "siga o instalador do Npcap (Next / Install)"}[self.npcap_state]
             c.create_image(0, 0, anchor="nw", image=self.bar_image(w, 24, "#6b4d12", 1.0, GOLD))
             self.text(w / 2, 12, msg, GOLD, (UI, 8, "bold"), anchor="center")
+            self.rows_y0 = 24 + self.ROW_GAP
+        elif UPDATER and UPDATER.ready:
+            self.banner = "update"
+            msg = (f"versão {UPDATER.ready[0]} disponível: clique aqui para atualizar"
+                   if not self.nofocus.locked else
+                   f"versão {UPDATER.ready[0]} disponível: {self.hotkey_name()} e clique aqui")
+            c.create_image(0, 0, anchor="nw", image=self.bar_image(w, 24, "#1f4a2e", 1.0, GREEN))
+            self.text(w / 2, 12, msg, "#7fe0a0", (UI, 8, "bold"), anchor="center")
             self.rows_y0 = 24 + self.ROW_GAP
         elif not s["pvp"] and unnamed and party_size:
             c.create_image(0, 0, anchor="nw", image=self.bar_image(w, 24, "#6b4d12", 1.0, GOLD))
@@ -1843,7 +1860,7 @@ class MeterWindow:
             status, color = f"DESTRAVADO · {self.hotkey_name()} trava", GOLD
         elif self.status_fn():
             status, color = self.status_fn(), GOLD
-        elif self.update_ready or (UPDATER and UPDATER.ready):
+        elif self.update_ready:
             status, color = "atualização pronta: instala sozinha fora de combate", GOLD
         elif UPDATER and UPDATER.status:
             status, color = UPDATER.status, MUTED
@@ -1859,6 +1876,45 @@ class MeterWindow:
     # --- resumo e histórico das lutas de boss ---
     def show_history(self):
         self.view = ("historico",)
+
+    GUIDE = [
+        ("Atalhos e janela", [
+            ("ALT+X", "destrava a janela para clicar (trava sozinha em 15 s)"),
+            ("ALT+Z", "zera a contagem"),
+            ("ALT+B", "alterna entre PVE e BOSS"),
+            ("Mover", "arraste a barra de cima; o canto de baixo redimensiona"),
+            ("Nome", "botão direito: renomear ou marcar \"Sou eu\""),
+            ("Zerar/fechar", "dois cliques (um clique sem querer não faz nada)"),
+            ("Rodapé", "opacidade, anotação, histórico, copiar e reiniciar"),
+        ]),
+        ("Modos e dicas", [
+            ("PVE", "monstros normais; pausas de mais de 5 s não contam"),
+            ("BOSS", "só boss (3M+ de vida); tempo = luta inteira"),
+            ("", "quando o boss morre o tempo pausa e sai um resumo"),
+            ("PVP", "dano entre jogadores perto de você"),
+            ("Nomes", "entre na pt ou troque de canal com o meter aberto"),
+            ("Histórico", "zerar, trocar de modo ou fechar guarda a luta"),
+            ("Atualização", "aparece um aviso verde; instala só quando você clica"),
+        ]),
+    ]
+
+    def toggle_guide(self):
+        self.view = None if self.view and self.view[0] == "guia" else ("guia", 0)
+
+    def draw_guide(self, c, w, h):
+        page = self.view[1]
+        title, items = self.GUIDE[page]
+        c.create_text(4, 12, text=f"Guia · {title}", anchor="w", fill=GOLD, font=(UI, 10, "bold"))
+        x = self.button(w, 12, "Voltar", self.close_view)
+        other = 1 - page
+        self.button(x - 6, 12, "Próxima" if page == 0 else "Anterior",
+                    lambda: setattr(self, "view", ("guia", other)))
+        y, step = 36, max(14, min(20, (h - 36) / len(items)))
+        for key, text in items:
+            if key:
+                c.create_text(4, y, anchor="w", fill=self.YELLOW, font=(UI, 8, "bold"), text=key)
+            c.create_text(84, y, anchor="w", fill=FG, font=(UI, 8), text=text, width=w - 88)
+            y += step
 
     def close_view(self):
         self.view = None
@@ -1894,6 +1950,9 @@ class MeterWindow:
     def draw_view(self, c, w, h):
         self.view_hits = []
         c.create_rectangle(0, 0, w, h, fill=BG, outline="")
+        if self.view[0] == "guia":
+            self.draw_guide(c, w, h)
+            return
         if self.view[0] == "historico":
             hist = list(reversed(self.session.load_history()))
             c.create_text(4, 12, text="Histórico de lutas", anchor="w", fill=GOLD,
@@ -2082,7 +2141,8 @@ class AutoUpdater(threading.Thread):
         bat.write_bytes(("\r\n".join(lines) + "\r\n").encode("mbcs", errors="replace"))
         # processo separado do meter (sobrevive quando o meter fecha) e sem janela
         detached, new_group, no_window, breakaway = 0x08, 0x200, 0x08000000, 0x01000000
-        for flags in (detached | new_group | breakaway, detached | new_group, no_window):
+        for flags in (no_window | new_group | breakaway, no_window | new_group,
+                      detached | new_group):
             try:
                 subprocess.Popen(["cmd", "/c", str(bat)], creationflags=flags, close_fds=True,
                                  stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,

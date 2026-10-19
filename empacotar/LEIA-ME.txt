@@ -98,9 +98,9 @@ LIMITAÇÕES
 ATUALIZAÇÃO AUTOMÁTICA
 ----------------------
 O meter procura versões novas no GitHub ao abrir (e de hora em hora). Se houver,
-ele baixa e se atualiza sozinho quando você ficar alguns segundos sem combate,
-mantendo seus nomes, histórico e configurações. Para desligar, coloque
-"atualizar_sozinho": false no config.json.
+ele baixa e mostra um aviso verde no topo da janela. Ele só instala quando você
+clica no aviso (ALT+X e clique), mantendo seus nomes, histórico e configurações.
+Para desligar a procura, coloque "atualizar_sozinho": false no config.json.
 
 
 ARQUIVOS QUE ELE CRIA (na mesma pasta)
