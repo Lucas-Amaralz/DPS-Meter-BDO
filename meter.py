@@ -29,7 +29,7 @@ from scapy.all import IP, TCP, PcapReader
 from capture import Capture, MarkerLog, write_info
 
 FROZEN = getattr(sys, "frozen", False)  # rodando como .exe (PyInstaller)
-VERSION = "1.3.5"  # mudar a cada release (o .exe compara com a última release do GitHub)
+VERSION = "1.3.6"  # mudar a cada release (o .exe compara com a última release do GitHub)
 UPDATE_REPO = "Lucas-Amaralz/DPS-Meter-BDO"
 UPDATE_ASSET = "DPS-Meter-BDO.zip"
 UPDATE_CHECK_EVERY = 3600  # s
@@ -53,6 +53,7 @@ STATUS_ACTOR, STATUS_ENTRY = 52, 53
 OP_PARTY_MEMBER = 0x0ED5
 # Corpo do 0x0ed5 (ficha de quem entra na pt): um bloco igual ao da lista da pt, no +0
 OP_SELF_PROFILE = 0x1A72
+SELF_SIGNAL_WINDOW = 600.0  # s: sem sinal certeiro há tanto tempo, volta a usar os golpes
 # Corpo do 0x1a72: chega só sobre o próprio jogador, ao entrar no jogo ou trocar de canal;
 # o nome do personagem fica em +65 (UTF-16)
 OP_PROFILE = 0x1771
@@ -200,6 +201,7 @@ class Combat:
         self.known_names, self.known_info = self.load_names_cache()  # ator -> nome / ficha
         self.past_party = {}  # quem saiu da pt (para continuar com nome no ranking)
         self.self_name = load_config().get("meu_personagem")  # nome do próprio jogador
+        self.self_signal_t = None  # último sinal certeiro de "este ator é você"
         self.target_max = {}  # maior vida já vista de cada monstro (para achar boss)
         self.target_hp = {}  # vida mais recente de cada monstro
         self.boss_min_hp = float(load_config().get("vida_minima_boss", BOSS_MIN_HP))
@@ -266,7 +268,14 @@ class Combat:
                 self.self_actor = last
             self.known_names.update({a: v[0] for a, v in party.items()})
             self.known_info.update(party)
+            names = dict(self.known_names)
         self.save_party_cache(party)
+        self.save_names_cache(names)
+        if last and party[last][2] is not None:
+            classes = load_config().get("minhas_classes", {})
+            if classes.get(party[last][0]) != party[last][2]:
+                classes[party[last][0]] = party[last][2]
+                save_config(minhas_classes=classes)
 
     def on_party_member(self, b):
         """Ficha de quem entra na pt (nome, família, classe, nível)."""
@@ -355,6 +364,9 @@ class Combat:
             if self.known_names.get(actor) == name:
                 return
             self.known_names[actor] = name
+            if self.self_name and name == self.self_name:
+                self.self_votes[actor] += 5
+                self.self_actor = actor
             entry = self.party.get(actor)
             if entry and not entry[0]:
                 self.party[actor] = (name,) + entry[1:]
@@ -431,6 +443,7 @@ class Combat:
         if op in SELF_SIGNALS:
             size, pos = SELF_SIGNALS[op]
             if len(m) - 5 == size:
+                self.self_signal_t = t  # este servidor manda os sinais certeiros
                 self._vote_self(struct.unpack_from("<I", m, 5 + pos)[0], 1.0)
             return
         if op == OP_ATTACK:
@@ -499,7 +512,10 @@ class Combat:
             dmg, value = struct.unpack_from("<ff", b, e + 77)
             if not who or not target or not (0 < dmg < 1e10) or not (0 <= value < 1e12):
                 continue
-            self._vote_self(who, 0.5)  # quem aparece batendo aqui é quase sempre você
+            # golpes aqui também são de quem está perto: só servem de pista quando o
+            # servidor não manda os sinais certeiros (0x141e/0x1c4b)
+            if self.self_signal_t is None or t - self.self_signal_t > SELF_SIGNAL_WINDOW:
+                self._vote_self(who, 0.5)
             with self.lock:
                 if target in self.players:  # golpe em jogador: é PvP, não PvE
                     continue
@@ -554,6 +570,9 @@ class Combat:
         if not actor or actor in IGNORED_ATTACKERS:
             return
         with self.lock:
+            other = self.known_names.get(actor)
+            if self.self_name and other and other != self.self_name:
+                return  # o perfil desse ator veio com outro nome: é outra pessoa
             for k in list(self.self_votes):
                 self.self_votes[k] *= 0.98
             self.self_votes[actor] += weight
@@ -824,6 +843,11 @@ class Session:
             for v in reversed(info):
                 if v[0] == name and v[2] is not None:
                     return v[2]
+        if self.is_me(actor):  # sem pt: a classe guardada da última vez que você entrou numa
+            mine = self.combat.self_name or self.my_name or name
+            code = load_config().get("minhas_classes", {}).get(mine) if mine else None
+            if code is not None:
+                return code
         return None
 
     def party_class(self, actor):
@@ -1164,20 +1188,27 @@ def render_badge(d, color, icon_path, code=None):
     from PIL import Image, ImageDraw
     base = hex_rgb(color)
     scale = 4  # desenha grande e reduz, para o círculo ficar liso
-    big = Image.new("RGBA", (d * scale, d * scale), (0, 0, 0, 0))
-    ImageDraw.Draw(big).ellipse((0, 0, d * scale - 1, d * scale - 1),
+    size = d * scale
+    big = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    ImageDraw.Draw(big).ellipse((0, 0, size - 1, size - 1),
                                 fill=mix(base, (0, 0, 0), 0.22) + (255,),
                                 outline=mix(base, (255, 255, 255), 0.6) + (255,), width=scale)
-    out = big.resize((d, d), Image.LANCZOS)
     try:
-        icon = Image.open(icon_path).convert("RGBA")
-        s = int(d * 0.62)  # símbolo com margem dentro do círculo
-        alpha = icon.getchannel("A").resize((s, s), Image.LANCZOS)
-        alpha = alpha.point(lambda v: min(255, int(v * 1.8)))  # traço mais cheio
-        light = Image.new("RGBA", (s, s), (255, 244, 214, 255))
+        # o símbolo é encaixado no tamanho grande e reduzido junto com o círculo, assim o
+        # centro não fica meio pixel torto por arredondamento
+        alpha = Image.open(icon_path).convert("RGBA").getchannel("A")
+        box = alpha.point(lambda v: 255 if v > 40 else 0).getbbox()
+        if box:
+            alpha = alpha.crop(box)
+        k = size * 0.62 / max(alpha.size)  # símbolo com margem dentro do círculo
+        w, h = max(1, round(alpha.width * k)), max(1, round(alpha.height * k))
+        alpha = alpha.resize((w, h), Image.LANCZOS).point(lambda v: min(255, int(v * 1.8)))
+        light = Image.new("RGBA", (w, h), (255, 244, 214, 255))
         light.putalpha(alpha)
-        out.alpha_composite(light, ((d - s) // 2, (d - s) // 2))
+        big.alpha_composite(light, ((size - w) // 2, (size - h) // 2))
+        return big.resize((d, d), Image.LANCZOS)
     except OSError:  # ícone ainda não baixado: sigla da classe
+        out = big.resize((d, d), Image.LANCZOS)
         from PIL import ImageFont
         try:
             font = ImageFont.truetype("segoeuib.ttf", int(d * 0.42))
