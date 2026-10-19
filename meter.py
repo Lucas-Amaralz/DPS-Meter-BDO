@@ -1378,6 +1378,11 @@ class MeterWindow:
                         self.root.after(800, self.close)
                         return
                     except Exception:
+                        import tempfile
+                        import traceback
+                        with open(Path(tempfile.gettempdir()) / "DPSMeterBDO_atualizacao.log", "a",
+                                  encoding="utf-8") as f:
+                            f.write(traceback.format_exc())
                         UPDATER.ready = None  # falhou: segue na versão atual
             self.root.after(2000, self.check_update)
             return
@@ -1964,7 +1969,7 @@ class AutoUpdater(threading.Thread):
             return
         self.status = f"baixando a versão {tag}..."
         work = Path(tempfile.gettempdir()) / f"DPSMeterBDO_update_{tag}"
-        zpath = work.with_suffix(".zip")
+        zpath = work.parent / (work.name + ".zip")
         req = urllib.request.Request(asset["browser_download_url"], headers={"User-Agent": "DPSMeterBDO"})
         zpath.write_bytes(urllib.request.urlopen(req, timeout=300).read())
         if work.exists():
@@ -1987,18 +1992,39 @@ class AutoUpdater(threading.Thread):
         tag, src = self.ready
         app_dir = Path(sys.executable).parent
         exe_name = Path(sys.executable).name
-        bat = Path(tempfile.gettempdir()) / "DPSMeterBDO_atualizar.bat"
-        bat.write_text("\r\n".join([
+        tmp = Path(tempfile.gettempdir())
+        bat = tmp / "DPSMeterBDO_atualizar.bat"
+        log = tmp / "DPSMeterBDO_atualizacao.log"  # registro, para investigar se algo falhar
+
+        def note(text):
+            with open(log, "a", encoding="utf-8") as f:
+                f.write(f"{datetime.now():%d/%m %H:%M:%S} {text}\n")
+
+        note(f"atualizando {VERSION} -> {tag} em {app_dir}")
+        # Sem tasklist/find (travam quando o script roda sem janela): o próprio robocopy
+        # tenta de novo a cada segundo enquanto os arquivos do meter ainda estão em uso.
+        lines = [
             "@echo off",
-            f"set PID={os.getpid()}",
-            ":espera",  # espera o meter fechar para poder trocar os arquivos
-            'tasklist /FI "PID eq %PID%" | find "%PID%" >nul && (timeout /t 1 /nobreak >nul & goto espera)',
-            f'robocopy "{src}" "{app_dir}" /E /R:5 /W:1 /NFL /NDL /NJH /NJS /NP >nul',
+            f'echo %date% %time% script iniciado >> "{log}"',
+            "ping -n 4 127.0.0.1 >nul",  # dá tempo do meter fechar
+            f'robocopy "{src}" "{app_dir}" /E /R:120 /W:1 /NFL /NDL /NJH /NJS /NP >nul',
+            f'echo %date% %time% robocopy terminou (codigo %errorlevel%) >> "{log}"',
             f'start "" "{app_dir / exe_name}"',
             'del "%~f0"',
-        ]) + "\r\n", encoding="ascii", errors="replace")
-        subprocess.Popen(["cmd", "/c", str(bat)], creationflags=0x08000000 | 0x00000008,
-                         close_fds=True)  # sem janela, independente do meter
+        ]
+        # grava em bytes, para o Windows não dobrar as quebras de linha
+        bat.write_bytes(("\r\n".join(lines) + "\r\n").encode("mbcs", errors="replace"))
+        # processo separado do meter (sobrevive quando o meter fecha) e sem janela
+        detached, new_group, no_window, breakaway = 0x08, 0x200, 0x08000000, 0x01000000
+        for flags in (detached | new_group | breakaway, detached | new_group, no_window):
+            try:
+                subprocess.Popen(["cmd", "/c", str(bat)], creationflags=flags, close_fds=True,
+                                 stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                                 stderr=subprocess.DEVNULL)
+                note(f"script iniciado (flags {flags:#x})")
+                break
+            except OSError as e:
+                note(f"falhou com flags {flags:#x}: {e}")
 
 
 UPDATER = None  # criado no main quando é o .exe
