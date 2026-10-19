@@ -41,7 +41,7 @@ atualiza quando você fica uns segundos sem combate, mantendo seus nomes, histó
 | Destravar a janela para mexer nela | **ALT+X** (a borda fica dourada) |
 | Travar de novo | **ALT+X** ou esperar 15 segundos |
 | Mover / redimensionar | arraste a barra de cima / o canto de baixo à direita |
-| Zerar a contagem | botão de setas ↻ em cima |
+| Zerar a contagem | botão de setas ↻ em cima, com dois cliques (zerar, reiniciar e fechar pedem confirmação) |
 | Copiar o ranking (para colar no chat/Discord) | botão de copiar no rodapé |
 | Renomear alguém, marcar "Sou eu" | botão direito no nome |
 | Opacidade | barrinha no rodapé |
@@ -61,7 +61,8 @@ teclado (seu WASD continua funcionando). Você pode deixá-la em cima da tela.
   da pt e de cada um), com botões para copiar e voltar à tela normal. Cada luta fica no **histórico**
   (botão de relógio no rodapé). Durante a luta aparece a vida do boss e o tempo estimado para
   ele morrer; no resumo, o recorde de tempo contra aquele boss, quem bateu o próprio recorde de
-  DPS, o dano que cada um recebeu e as mortes.
+  DPS, o dano que cada um recebeu e as mortes. Ao zerar, trocar de modo ou fechar o meter, a contagem
+  atual também vai para o histórico (em PVE e BOSS), então nenhuma luta se perde.
 - **PVP**: dano **entre jogadores** perto de você (duelo, arena, guerra de nó), com dano causado,
   dano recebido e abates/mortes.
 

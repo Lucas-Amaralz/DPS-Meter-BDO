@@ -29,7 +29,7 @@ from scapy.all import IP, TCP, PcapReader
 from capture import Capture, MarkerLog, write_info
 
 FROZEN = getattr(sys, "frozen", False)  # rodando como .exe (PyInstaller)
-VERSION = "1.3.2"  # mudar a cada release (o .exe compara com a última release do GitHub)
+VERSION = "1.3.3"  # mudar a cada release (o .exe compara com a última release do GitHub)
 UPDATE_REPO = "Lucas-Amaralz/DPS-Meter-BDO"
 UPDATE_ASSET = "DPS-Meter-BDO.zip"
 UPDATE_CHECK_EVERY = 3600  # s
@@ -88,6 +88,7 @@ COMBAT_GAP = 5.0  # segundos sem golpe que não contam como tempo de combate
 BOSS_MIN_HP = 3_000_000
 BOSS_DEATH_FRAC = 0.002  # vida <= 0,2% da máxima = morreu (o golpe final nem sempre chega)
 BOSS_LOW_FRAC, BOSS_IDLE_DEATH = 0.03, 6.0  # ou: < 3% e 6 s sem levar golpe
+UNFINISHED_MIN_TIME = 5.0  # s de combate para guardar no histórico ao zerar/fechar
 
 
 class StreamParser:
@@ -173,7 +174,7 @@ class Combat:
 
     def __init__(self, log_path=None):
         self.lock = threading.Lock()
-        self.log_file = open(log_path, "w", newline="", encoding="utf-8") if log_path else None
+        self.log_file = open(log_path, "w", newline="", encoding="utf-8", buffering=1) if log_path else None
         if self.log_file:
             self.log = csv.writer(self.log_file)
             self.log.writerow(["hora", "t", "atacante", "alvo", "dano", "vida_antes",
@@ -520,7 +521,21 @@ class Combat:
         summary = self._snapshot_nolock()
         summary["boss_vida"] = self._tmax(self.enc_boss) if self.enc_boss else 0
         summary["fim"] = time.time()
+        summary["tipo"] = "boss"
         self.finished.append(summary)
+
+    def take_unfinished(self):
+        """Contagem que ainda não foi para o histórico (antes de zerar, trocar de modo ou fechar)."""
+        with self.lock:
+            if self.pvp_mode or (self.boss_mode and self.enc_state != "active"):
+                return None  # PvP não vai ao histórico; boss já morto já foi salvo
+            s = self._snapshot_nolock()
+            if not s["total"] or s["tempo"] < UNFINISHED_MIN_TIME:
+                return None
+            s["boss_vida"] = 0  # luta incompleta não entra nos recordes
+            s["fim"] = time.time()
+            s["tipo"] = "boss (interrompida)" if self.boss_mode else "caça"
+            return s
 
     def check_boss_dead(self, t):
         """Boss com pouca vida que parou de levar golpe também conta como morto."""
@@ -864,7 +879,7 @@ class Session:
         item = {
             "quando": datetime.fromtimestamp(s.get("fim", time.time())).strftime("%d/%m %H:%M"),
             "tempo": s["tempo"], "total": s["total"], "dps": s["dps"],
-            "boss_vida": s.get("boss_vida", 0),
+            "boss_vida": s.get("boss_vida", 0), "tipo": s.get("tipo", "boss"),
             "linhas": [[self.label(r["ator"]), r["dano"], r["dps"], r["pct"],
                         self.party_class_code(r["ator"]), self.is_me(r["ator"]),
                         r.get("recebido_pve", 0), r.get("mortes", 0)]
@@ -889,7 +904,7 @@ class Session:
                                     encoding="utf-8")
         except OSError:
             pass
-        self.add_note(f"[boss derrotado] {fmt_time(item['tempo'])} total {item['total']:,.0f}")
+        self.add_note(f"[{item['tipo']} salva] {fmt_time(item['tempo'])} total {item['total']:,.0f}")
         return item
 
     def add_note(self, text):
@@ -1264,11 +1279,16 @@ class MeterWindow:
         title.pack(fill="x")
         self.timer = tk.Label(title, text="00:00", font=(NUM, 10, "bold"), bg=PANEL, fg=MUTED)
         self.timer.pack(side="left", padx=(10, 8), pady=3)
-        IconButton(title, ICON_CLOSE, self.close).pack(side="right")
+        self.pending = (None, 0.0)  # ação esperando o 2º clique de confirmação
+        IconButton(title, ICON_CLOSE,
+                   lambda: self.confirm("fechar", "clique de novo para fechar", self.close)
+                   ).pack(side="right")
         self.pin_btn = IconButton(title, ICON_PIN, self.toggle_pin)
         self.pin_btn.pack(side="right")
         self.pin_btn.set_active(True)
-        IconButton(title, ICON_RESET, self.reset).pack(side="right")
+        IconButton(title, ICON_RESET,
+                   lambda: self.confirm("zerar", "clique de novo para zerar", self.reset)
+                   ).pack(side="right")
         self.pve_btn = tk.Label(title, text="PVE", font=(UI, 7, "bold"), padx=6, pady=1,
                                 cursor="hand2")
         self.pve_btn.pack(side="left", padx=(0, 4))
@@ -1304,8 +1324,10 @@ class MeterWindow:
         grip.bind("<ButtonPress-1>", self.start_resize)
         grip.bind("<B1-Motion>", self.on_resize)
         # no .exe o botão só reinicia o meter; no meter.py também aplica atualização
-        self.update_btn = IconButton(footer, ICON_UPDATE,
-                                     self.restart_app if FROZEN else self.restart, size=8)
+        self.update_btn = IconButton(
+            footer, ICON_UPDATE,
+            lambda: self.confirm("reiniciar", "clique de novo para reiniciar o meter",
+                                 self.restart_app if FROZEN else self.restart), size=8)
         self.update_btn.pack(side="right")
         IconButton(footer, ICON_COPY, self.copy_ranking, size=8).pack(side="right")
         IconButton(footer, ICON_HISTORY, self.show_history, size=8).pack(side="right")
@@ -1488,7 +1510,27 @@ class MeterWindow:
         self.alpha_label.config(text=f"{self.alpha:.0%}")
 
     # --- ações ---
+    def confirm(self, key, text, action):
+        """Zerar, reiniciar e fechar pedem um 2º clique (um clique sem querer não perde nada)."""
+        now = time.time()
+        if self.pending[0] == key and now < self.pending[1]:
+            self.pending = (None, 0.0)
+            action()
+        else:
+            self.pending = (key, now + 3)
+            self.flash = (text, now + 3)
+
+    def save_unfinished(self):
+        """Guarda no histórico a contagem atual antes de ela ser perdida."""
+        try:
+            s = self.session.combat.take_unfinished()
+            if s:
+                self.session.add_history(s)
+        except Exception:
+            pass
+
     def reset(self):
+        self.save_unfinished()
         self.session.add_note("[zerado]")
         self.session.write_summary()
         self.session.combat.reset()
@@ -1511,6 +1553,7 @@ class MeterWindow:
         combat.boss_mode, combat.pvp_mode = boss, pvp
         save_config(modo_boss=boss, modo_pvp=pvp)
         name = "pvp" if pvp else "boss" if boss else "grind"
+        self.save_unfinished()
         self.session.add_note(f"[modo {name}]")
         self.session.write_summary()
         combat.reset()
@@ -1532,6 +1575,7 @@ class MeterWindow:
         self.pin_btn.set_active(on)
 
     def close(self):
+        self.save_unfinished()
         save_config(janela=self.root.geometry(), opacidade=round(self.alpha, 2))
         self.root.destroy()
 
@@ -1786,10 +1830,10 @@ class MeterWindow:
         text, until = self.flash
         if not self.hotkey:
             status, color = "atalho indisponível: troque \"atalho\" no config.json", GOLD
-        elif not self.nofocus.locked and not self.typing:
-            status, color = f"DESTRAVADO · {self.hotkey_name()} trava", GOLD
         elif time.time() < until:
             status, color = text, GOLD
+        elif not self.nofocus.locked and not self.typing:
+            status, color = f"DESTRAVADO · {self.hotkey_name()} trava", GOLD
         elif self.status_fn():
             status, color = self.status_fn(), GOLD
         elif self.update_ready or (UPDATER and UPDATER.ready):
@@ -1813,7 +1857,7 @@ class MeterWindow:
         self.view = None
 
     def summary_text(self, item):
-        lines = [f"DPS Meter BDO | boss {item['quando']} | tempo {fmt_time(item['tempo'])} | "
+        lines = [f"DPS Meter BDO | {item.get('tipo', 'boss')} {item['quando']} | tempo {fmt_time(item['tempo'])} | "
                  f"total {fmt(item['total'])} | pt {fmt(item['dps'])}/s"]
         if item.get("recorde_tempo") is not None:
             lines[0] += f" | recorde {fmt_time(item['recorde_tempo'])}"
@@ -1857,14 +1901,17 @@ class MeterWindow:
                 r = c.create_rectangle(0, y - 10, w, y + 10, fill=TRACK, outline="")
                 c.create_text(6, y, anchor="w", fill=FG, font=(NUM, 9),
                               text=f"{item['quando']}   {fmt_time(item['tempo'])}   "
-                                   f"pt {fmt(item['dps'])}/s")
+                                   f"pt {fmt(item['dps'])}/s"
+                                   + ("" if item.get("tipo", "boss") == "boss"
+                                      else f"   ({item['tipo']})"))
                 c.create_text(w - 6, y, anchor="e", fill=MUTED, font=(UI, 8), text=f"1º {top}")
                 self.view_hits.append((0, y - 10, w, y + 10,
                                        lambda it=item: setattr(self, "view", ("resumo", it, False))))
                 y += 22
             return
         item = self.view[1]
-        c.create_text(4, 12, text="Boss derrotado" if self.view[2] else f"Luta de {item['quando']}",
+        c.create_text(4, 12, text="Boss derrotado" if self.view[2] else
+                           f"{item.get('tipo', 'boss').capitalize()} de {item['quando']}",
                       anchor="w", fill=GOLD, font=(UI, 10, "bold"))
         x = self.button(w, 12, "Voltar", self.close_view)
         self.button(x - 6, 12, "Copiar", lambda: self.copy_summary(item))
