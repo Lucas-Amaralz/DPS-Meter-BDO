@@ -22,3 +22,6 @@ empacotar/build.log
 
 # Ferramentas locais (gh portátil)
 .tools/
+
+# Histórico de lutas de boss (pessoal)
+historico.json

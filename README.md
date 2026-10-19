@@ -50,8 +50,11 @@ teclado (seu WASD continua funcionando). Você pode deixá-la em cima da tela.
 
 - **PVE** (padrão): monstros normais. Pausas de mais de 5 s sem golpes não contam, e o DPS de cada um
   usa só o tempo em que a pessoa estava batendo.
-- **BOSS**: boss e dungeon. O tempo é **a luta inteira** (do primeiro ao último golpe, com pausas e
-  troca de fase) e o DPS de todos é calculado sobre esse tempo, o número certo para comparar runs.
+- **BOSS**: boss e dungeon. Conta só o dano em **boss e sub-bosses** (monstros a partir de 3 milhões
+  de vida; adds e mobs comuns ficam de fora). A luta **começa sozinha** no primeiro golpe da pt num boss,
+  o tempo é a luta inteira e, quando o boss morre, **o tempo pausa** e aparece um **resumo** (tempo, DPS
+  da pt e de cada um), com botões para copiar e voltar à tela normal. Cada luta fica no **histórico**
+  (botão de relógio no rodapé).
 - **PVP**: dano **entre jogadores** perto de você (duelo, arena, guerra de nó), com dano causado,
   dano recebido e abates/mortes.
 

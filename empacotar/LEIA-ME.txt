@@ -60,10 +60,11 @@ A JANELA
     * zerar a contagem (botão de setas em cima), por exemplo antes de um boss;
     * botão PVE (padrão): monstros normais. Pausas maiores que 5 segundos
       não contam e o DPS de cada um usa o tempo em que estava batendo;
-    * botão BOSS: para boss e dungeon. O tempo passa a ser a luta inteira
-      (do primeiro ao último golpe, com pausas e troca de fase), e o DPS de
-      todos é calculado sobre esse tempo. Clique de novo para voltar ao
-      modo grind. Trocar de modo zera a contagem;
+    * botão BOSS: para boss e dungeon. Conta só o dano em boss e sub-bosses
+      (adds e mobs comuns ficam de fora). A luta começa sozinha no primeiro
+      golpe num boss; quando o boss morre o tempo pausa e aparece um resumo
+      (botões Copiar e Voltar). O botão de relógio no rodapé abre o histórico
+      de lutas;
     * botão PVP: mostra o dano entre jogadores perto de você (duelo, arena,
       guerra de nó): DPS, dano causado, dano recebido (em vermelho) e
       abates/mortes. Inclui jogadores de fora da pt. Clique de novo para sair;

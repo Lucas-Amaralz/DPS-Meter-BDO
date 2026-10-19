@@ -77,6 +77,10 @@ SELF_SIGNALS = {0x141E: (58, 26), 0x1C4B: (243, 0)}
 IGNORED_ATTACKERS = {0xFFFFFC00}
 PARTY_TIMEOUT = 35.0  # s sem o estado da pt (chega a cada ~10 s) = você saiu da pt
 COMBAT_GAP = 5.0  # segundos sem golpe que não contam como tempo de combate
+# Modo BOSS: só contam alvos grandes (boss e sub-bosses); adds e mobs comuns ficam de fora
+BOSS_MIN_HP = 3_000_000
+BOSS_DEATH_FRAC = 0.002  # vida <= 0,2% da máxima = morreu (o golpe final nem sempre chega)
+BOSS_LOW_FRAC, BOSS_IDLE_DEATH = 0.03, 6.0  # ou: < 3% e 6 s sem levar golpe
 
 
 class StreamParser:
@@ -186,10 +190,23 @@ class Combat:
         self.player_hp = {}  # vida atual dos jogadores (para o dano de PvP)
         self.known_names, self.known_info = self.load_names_cache()  # ator -> nome / ficha
         self.past_party = {}  # quem saiu da pt (para continuar com nome no ranking)
+        self.target_max = {}  # maior vida já vista de cada monstro (para achar boss)
+        self.target_hp = {}  # vida mais recente de cada monstro
+        self.boss_min_hp = float(load_config().get("vida_minima_boss", BOSS_MIN_HP))
+        self.finished = []  # lutas de boss encerradas (a janela pega e guarda no histórico)
+        self.dead_bosses = set()  # bosses que já morreram (não começam luta nova)
         self.reset()
 
     def reset(self):
         with self.lock:
+            self._reset_counters()
+
+    def _reset_counters(self):
+        """Zera a contagem (com o lock já pego)."""
+        if True:
+            self.enc_state = "idle"  # modo boss: idle -> active (lutando) -> paused (morreu)
+            self.enc_boss = None  # alvo principal da luta (o de mais vida)
+            self.enc_boss_t = None
             self.damage = Counter()
             self.hits = Counter()
             self.biggest = Counter()
@@ -375,6 +392,7 @@ class Combat:
             self.first_t = t
         self.last_t = t
         self.check_party_alive(t)
+        self.check_boss_dead(t)
         if m[2] != 0 or len(m) < 6:
             return
         op = m[3] | m[4] << 8
@@ -431,6 +449,7 @@ class Combat:
                         self.last_hit_wall = time.time()
                 return
             self.max_hp[target] = max_hp
+            self.target_max[target] = max(self.target_max.get(target, 0), max_hp)
             prev = self.hp.get(target, max_hp if seq == 1 else None)
             self.hp[target] = value
             if prev is None or value >= prev or who in IGNORED_ATTACKERS:
@@ -457,11 +476,37 @@ class Combat:
             with self.lock:
                 if target in self.players:  # golpe em jogador: é PvP, não PvE
                     continue
+                self.target_max[target] = max(self.target_max.get(target, 0), value + dmg)
                 max_hp = self.max_hp.get(target, 0)
                 if who not in IGNORED_ATTACKERS:
                     self.explained[target] += dmg
             if who not in IGNORED_ATTACKERS:
                 self._credit(t, who, target, dmg, value + dmg, value, max_hp, None)
+
+    def _tmax(self, target):
+        return max(self.max_hp.get(target, 0), self.target_max.get(target, 0))
+
+    def _end_encounter(self):
+        """Boss morreu: pausa o tempo e guarda o resultado (com o lock já pego)."""
+        if self.enc_state != "active":
+            return
+        self.enc_state = "paused"
+        self.dead_bosses.add(self.enc_boss)
+        summary = self._snapshot_nolock()
+        summary["boss_vida"] = self._tmax(self.enc_boss) if self.enc_boss else 0
+        summary["fim"] = time.time()
+        self.finished.append(summary)
+
+    def check_boss_dead(self, t):
+        """Boss com pouca vida que parou de levar golpe também conta como morto."""
+        if not self.boss_mode or self.enc_state != "active" or self.enc_boss is None:
+            return
+        with self.lock:
+            b = self.enc_boss
+            hp, tmax = self.target_hp.get(b), self._tmax(b)
+            if (hp is not None and tmax and hp <= tmax * BOSS_LOW_FRAC
+                    and self.enc_boss_t is not None and t - self.enc_boss_t > BOSS_IDLE_DEATH):
+                self._end_encounter()
 
     def _vote_self(self, actor, weight):
         """Junta sinais de qual ator é o próprio jogador; votos antigos perdem força."""
@@ -478,6 +523,21 @@ class Combat:
     def _credit(self, t, who, target, dmg, prev, value, max_hp, seq):
         """Credita dano a quem bateu (vindo da 0x16bc, exato, ou da queda de vida da 0x0f4e)."""
         with self.lock:
+            self.target_hp[target] = value
+            if self.boss_mode:
+                tmax = self._tmax(target)
+                if tmax < self.boss_min_hp:
+                    return  # boss/dg: adds e mobs comuns não contam
+                ours = who in self.party or who == self.self_actor
+                if self.enc_state != "active":
+                    if not ours or target in self.dead_bosses or value <= tmax * BOSS_LOW_FRAC:
+                        return  # só um golpe da pt num boss vivo começa uma luta
+                    self._reset_counters()  # luta nova (a anterior já foi para o histórico)
+                    self.enc_state = "active"
+                if self.enc_boss is None or tmax > self._tmax(self.enc_boss):
+                    self.enc_boss = target
+                if target == self.enc_boss:
+                    self.enc_boss_t = t
             # O tempo de combate só anda com golpes da pt e seus (quem está fora não conta)
             if who in self.party or who == self.self_actor:
                 if self.last_hit is not None:
@@ -498,6 +558,9 @@ class Combat:
             self.hits[who] += 1
             self.total_hits += 1
             self.biggest[who] = max(self.biggest[who], dmg)
+            if (self.boss_mode and target == self.enc_boss
+                    and value <= self._tmax(target) * BOSS_DEATH_FRAC):
+                self._end_encounter()
         if self.log_file:
             self.log.writerow([datetime.fromtimestamp(t).strftime("%H:%M:%S.%f")[:-3],
                                f"{t:.3f}", f"{who:08x}", f"{target:08x}", f"{dmg:.0f}",
@@ -506,6 +569,10 @@ class Combat:
 
     def snapshot(self):
         with self.lock:
+            return self._snapshot_nolock()
+
+    def _snapshot_nolock(self):
+        if True:
             if self.pvp_mode:
                 return self._pvp_snapshot()
             if self.boss_mode:  # a luta inteira, do 1º ao último golpe da pt
@@ -535,8 +602,11 @@ class Combat:
                     and self.self_actor not in self.party:
                 rows.append(row(self.self_actor, 0))
             outside = [row(w, d) for w, d in self.damage.most_common() if not in_party(w)]
+            boss_pct = None
+            if self.boss_mode and self.enc_boss is not None and self._tmax(self.enc_boss):
+                boss_pct = self.target_hp.get(self.enc_boss, 0) / self._tmax(self.enc_boss)
             return {"total": total, "tempo": tempo, "dps": total / dur, "boss": self.boss_mode,
-                    "pvp": False,
+                    "pvp": False, "luta": self.enc_state, "boss_pct": boss_pct,
                     "ativo": time.time() - self.last_hit_wall < COMBAT_GAP,
                     "golpes": sum(self.hits[w] for w, _ in ranked), "linhas": rows,
                     "fora": outside}
@@ -748,6 +818,35 @@ class Session:
             return f"{name} (você)" if mark_me else name
         return f"{name} (saiu)" if left else name
 
+    HISTORY = APP_DIR / "historico.json"
+    HISTORY_MAX = 100
+
+    def load_history(self):
+        try:
+            return json.loads(self.HISTORY.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return []
+
+    def add_history(self, s):
+        """Guarda uma luta de boss encerrada (com nomes e classes já resolvidos)."""
+        item = {
+            "quando": datetime.fromtimestamp(s.get("fim", time.time())).strftime("%d/%m %H:%M"),
+            "tempo": s["tempo"], "total": s["total"], "dps": s["dps"],
+            "boss_vida": s.get("boss_vida", 0),
+            "linhas": [[self.label(r["ator"]), r["dano"], r["dps"], r["pct"],
+                        self.party_class_code(r["ator"]), self.is_me(r["ator"])]
+                       for r in s["linhas"] if r["dano"] > 0],
+        }
+        hist = self.load_history()
+        hist.append(item)
+        try:
+            self.HISTORY.write_text(json.dumps(hist[-self.HISTORY_MAX:], ensure_ascii=False),
+                                    encoding="utf-8")
+        except OSError:
+            pass
+        self.add_note(f"[boss derrotado] {fmt_time(item['tempo'])} total {item['total']:,.0f}")
+        return item
+
     def add_note(self, text):
         self.notes.append((time.time(), "nota", text))
 
@@ -817,6 +916,7 @@ UPDATE_IDLE = 10.0  # segundos sem combate para aplicar uma atualização sozinh
 # no .exe não há código para vigiar: atualização é trocar a pasta
 WATCHED = [] if FROZEN else [APP_DIR / n for n in ("meter.py", "capture.py")]
 ICON_UPDATE = ""
+ICON_HISTORY = "\ue81c"
 
 
 def parse_hotkey(text):
@@ -1089,6 +1189,8 @@ class MeterWindow:
         self.typing = None  # ("nota", None) ou ("nome", ator)
         self.flash = ("", 0.0)
         self.restart_requested = False
+        self.view = None  # None (normal), ("resumo", luta, automático?) ou ("historico",)
+        self.view_hits = []  # áreas clicáveis do resumo/histórico: (x1, y1, x2, y2, ação)
         self.update_ready = False
         self.mtimes = self.read_mtimes()
         cfg = load_config()
@@ -1157,6 +1259,7 @@ class MeterWindow:
                                      self.restart_app if FROZEN else self.restart, size=8)
         self.update_btn.pack(side="right")
         IconButton(footer, ICON_COPY, self.copy_ranking, size=8).pack(side="right")
+        IconButton(footer, ICON_HISTORY, self.show_history, size=8).pack(side="right")
         IconButton(footer, ICON_NOTE, lambda: self.start_typing("nota"), size=8).pack(side="right")
         self.alpha_label = tk.Label(footer, font=(NUM, 8), bg=PANEL, fg=MUTED, width=4)
         self.alpha_label.pack(side="right")
@@ -1418,6 +1521,12 @@ class MeterWindow:
 
     def on_canvas_click(self, e):
         self.close_menu()
+        if self.view:
+            for x1, y1, x2, y2, action in self.view_hits:
+                if x1 <= e.x <= x2 and y1 <= e.y <= y2:
+                    action()
+                    return
+            return
         if self.need_npcap and e.y < 26 and self.npcap_state is None:
             self.install_npcap()
 
@@ -1487,9 +1596,21 @@ class MeterWindow:
         return self.canvas.create_text(x, y, text=text, fill=fill, font=font, anchor=anchor)
 
     def refresh(self):
-        s = self.session.combat.snapshot()
+        combat = self.session.combat
+        while combat.finished:
+            item = self.session.add_history(combat.finished.pop(0))
+            self.view = ("resumo", item, True)
+            self.flash = ("boss derrotado! tempo pausado", time.time() + 4)
+        s = combat.snapshot()
+        if self.view and self.view[0] == "resumo" and self.view[2] and s.get("luta") == "active":
+            self.view = None  # luta nova começou: volta para a tela normal
         self.timer.config(text=fmt_time(s["tempo"]), fg=GREEN if s["ativo"] else MUTED)
-        self.totals.config(text=f"Total {fmt(s['total'])}   ·   DPS {fmt(s['dps'])}/s"
+        extra = ""
+        if s.get("boss") and s.get("luta") == "paused":
+            extra = "   ·   PAUSADO"
+        elif s.get("boss") and s.get("boss_pct") is not None:
+            extra = f"   ·   Boss {s['boss_pct']:.0%}"
+        self.totals.config(text=(f"Total {fmt(s['total'])}   ·   DPS {fmt(s['dps'])}/s" + extra)
                            if s["total"] else "Total -")
         with self.session.combat.lock:
             party_size = len(self.session.combat.party)
@@ -1570,6 +1691,8 @@ class MeterWindow:
             yc = self.rows_y0 + (h - self.rows_y0) / 2
             c.create_text(w / 2, yc - 8, text=title, fill=MUTED, font=(UI, 10))
             c.create_text(w / 2, yc + 12, text=sub, fill=DIM, font=(UI, 8))
+        if self.view:
+            self.draw_view(c, w, h)
         if self.menu:
             self.menu.lift()
 
@@ -1592,6 +1715,85 @@ class MeterWindow:
     def save_summary(self):
         self.session.write_summary()
         self.root.after(3000, self.save_summary)
+
+    # --- resumo e histórico das lutas de boss ---
+    def show_history(self):
+        self.view = ("historico",)
+
+    def close_view(self):
+        self.view = None
+
+    def summary_text(self, item):
+        lines = [f"DPS Meter BDO | boss {item['quando']} | tempo {fmt_time(item['tempo'])} | "
+                 f"total {fmt(item['total'])} | pt {fmt(item['dps'])}/s"]
+        for i, (name, dano, dps, pct, *_ ) in enumerate(item["linhas"], 1):
+            lines.append(f"{i}. {name}: {fmt(dano)} ({pct:.1%}) {fmt(dps)}/s".replace(".", ","))
+        return "\n".join(lines)
+
+    def copy_summary(self, item):
+        self.root.clipboard_clear()
+        self.root.clipboard_append(self.summary_text(item))
+        self.flash = ("resumo copiado!", time.time() + 2)
+
+    def button(self, x2, y, text, action):
+        """Botão desenhado no canvas (alinhado à direita em x2); devolve a borda esquerda."""
+        c = self.canvas
+        t = c.create_text(x2 - 8, y, text=text, anchor="e", fill=FG, font=(UI, 8, "bold"))
+        x1 = c.bbox(t)[0] - 8
+        r = c.create_rectangle(x1, y - 10, x2, y + 10, fill="#262a33", outline=LINE)
+        c.tag_lower(r, t)
+        self.view_hits.append((x1, y - 10, x2, y + 10, action))
+        return x1
+
+    def draw_view(self, c, w, h):
+        self.view_hits = []
+        c.create_rectangle(0, 0, w, h, fill=BG, outline="")
+        if self.view[0] == "historico":
+            hist = list(reversed(self.session.load_history()))
+            c.create_text(4, 12, text="Histórico de lutas", anchor="w", fill=GOLD,
+                          font=(UI, 10, "bold"))
+            self.button(w, 12, "Voltar", self.close_view)
+            if not hist:
+                c.create_text(w / 2, h / 2, text="nenhuma luta de boss ainda", fill=MUTED,
+                              font=(UI, 9))
+            y = 36
+            for item in hist[:max(1, int((h - 36) // 22))]:
+                top = item["linhas"][0][0] if item["linhas"] else "-"
+                r = c.create_rectangle(0, y - 10, w, y + 10, fill=TRACK, outline="")
+                c.create_text(6, y, anchor="w", fill=FG, font=(NUM, 9),
+                              text=f"{item['quando']}   {fmt_time(item['tempo'])}   "
+                                   f"pt {fmt(item['dps'])}/s")
+                c.create_text(w - 6, y, anchor="e", fill=MUTED, font=(UI, 8), text=f"1º {top}")
+                self.view_hits.append((0, y - 10, w, y + 10,
+                                       lambda it=item: setattr(self, "view", ("resumo", it, False))))
+                y += 22
+            return
+        item = self.view[1]
+        c.create_text(4, 12, text="Boss derrotado" if self.view[2] else f"Luta de {item['quando']}",
+                      anchor="w", fill=GOLD, font=(UI, 10, "bold"))
+        x = self.button(w, 12, "Voltar", self.close_view)
+        self.button(x - 6, 12, "Copiar", lambda: self.copy_summary(item))
+        c.create_text(4, 34, anchor="w", fill=FG, font=(NUM, 9),
+                      text=f"Tempo {fmt_time(item['tempo'])}   ·   Total {fmt(item['total'])}   ·   "
+                           f"DPS pt {fmt(item['dps'])}/s")
+        y = 56
+        for i, (name, dano, dps, pct, code, me) in enumerate(item["linhas"][:max(1, int((h - 56) // 22))]):
+            color = self.color_for_class(code)
+            rounded(c, 0, y - 10, w, y + 10, 6, fill=blend(color, TRACK, 0.35 if i else 0.6),
+                    outline=GOLD if me else "")
+            c.create_text(8, y, anchor="w", fill=GOLD if i == 0 else MUTED, font=(NUM, 9, "bold"),
+                          text=str(i + 1))
+            c.create_text(24, y, anchor="w", fill=FG, font=("Segoe UI Semibold", 9), text=name)
+            t = c.create_text(w - 8, y, anchor="e", fill=FG, font=(NUM, 9),
+                              text=f"{pct:.1%}".replace(".", ","))
+            t = c.create_text(c.bbox(t)[0] - 10, y, anchor="e", fill="#dfe2e6", font=(NUM, 8),
+                              text=fmt(dano))
+            c.create_text(c.bbox(t)[0] - 8, y, anchor="e", fill=self.YELLOW, font=(NUM, 9, "bold"),
+                          text=f"{fmt(dps)}/s")
+            y += 22
+
+    def color_for_class(self, code):
+        return CLASS_COLORS.get(code, PALETTE[(code or 0) % len(PALETTE)])
 
     def run(self):
         self.root.mainloop()
