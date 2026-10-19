@@ -29,7 +29,7 @@ from scapy.all import IP, TCP, PcapReader
 from capture import Capture, MarkerLog, write_info
 
 FROZEN = getattr(sys, "frozen", False)  # rodando como .exe (PyInstaller)
-VERSION = "1.3.6"  # mudar a cada release (o .exe compara com a última release do GitHub)
+VERSION = "1.3.7"  # mudar a cada release (o .exe compara com a última release do GitHub)
 UPDATE_REPO = "Lucas-Amaralz/DPS-Meter-BDO"
 UPDATE_ASSET = "DPS-Meter-BDO.zip"
 UPDATE_CHECK_EVERY = 3600  # s
@@ -1896,7 +1896,7 @@ class MeterWindow:
         elif UPDATER and UPDATER.status:
             status, color = UPDATER.status, MUTED
         else:
-            status, color = f"{self.hotkey_name()} destrava", MUTED
+            status, color = f"v{VERSION} · {self.hotkey_name()} destrava", MUTED
         self.status.config(text=status, fg=color)
         self.root.after(400, self.refresh)
 
