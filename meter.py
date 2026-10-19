@@ -29,6 +29,10 @@ from scapy.all import IP, TCP, PcapReader
 from capture import Capture, MarkerLog, write_info
 
 FROZEN = getattr(sys, "frozen", False)  # rodando como .exe (PyInstaller)
+VERSION = "1.3.0"  # mudar a cada release (o .exe compara com a última release do GitHub)
+UPDATE_REPO = "Lucas-Amaralz/DPS-Meter-BDO"
+UPDATE_ASSET = "DPS-Meter-BDO.zip"
+UPDATE_CHECK_EVERY = 3600  # s
 # config, caches, capturas e ícones ficam ao lado do programa (do .exe ou do meter.py)
 APP_DIR = Path(sys.executable).parent if FROZEN else Path(__file__).parent
 
@@ -1365,6 +1369,17 @@ class MeterWindow:
 
     def check_update(self):
         if FROZEN:
+            if UPDATER and UPDATER.ready:
+                idle = time.time() - self.session.combat.last_hit_wall > UPDATE_IDLE
+                if idle and not self.typing and self.nofocus.locked:
+                    self.flash = (f"atualizando para a versão {UPDATER.ready[0]}...", time.time() + 5)
+                    try:
+                        UPDATER.apply()
+                        self.root.after(800, self.close)
+                        return
+                    except Exception:
+                        UPDATER.ready = None  # falhou: segue na versão atual
+            self.root.after(2000, self.check_update)
             return
         if not self.update_ready and self.read_mtimes() != self.mtimes:
             self.update_ready = True
@@ -1760,8 +1775,10 @@ class MeterWindow:
             status, color = text, GOLD
         elif self.status_fn():
             status, color = self.status_fn(), GOLD
-        elif self.update_ready:
-            status, color = "atualização pronta: aplica sozinha fora de combate", GOLD
+        elif self.update_ready or (UPDATER and UPDATER.ready):
+            status, color = "atualização pronta: instala sozinha fora de combate", GOLD
+        elif UPDATER and UPDATER.status:
+            status, color = UPDATER.status, MUTED
         else:
             status, color = f"{self.hotkey_name()} destrava", MUTED
         self.status.config(text=status, fg=color)
@@ -1908,6 +1925,85 @@ def download_npcap():
         return False
 
 
+def parse_version(text):
+    return tuple(int(x) for x in re.findall(r"\d+", text or "")[:3])
+
+
+class AutoUpdater(threading.Thread):
+    """No .exe: procura uma versão nova no GitHub, baixa e deixa pronta para instalar.
+
+    A instalação troca só os arquivos do programa; config, nomes, histórico, ícones e
+    capturas ficam como estão (eles nem vêm no .zip)."""
+
+    def __init__(self):
+        super().__init__(daemon=True)
+        self.ready = None  # (versão, pasta com os arquivos novos)
+        self.status = None
+
+    def run(self):
+        while self.ready is None:
+            try:
+                self.check()
+            except Exception:
+                pass  # sem internet ou GitHub fora: tenta de novo mais tarde
+            time.sleep(UPDATE_CHECK_EVERY)
+
+    def check(self):
+        import tempfile
+        import urllib.request
+        import zipfile
+        headers = {"User-Agent": "DPSMeterBDO", "Accept": "application/vnd.github+json"}
+        req = urllib.request.Request(f"https://api.github.com/repos/{UPDATE_REPO}/releases/latest",
+                                     headers=headers)
+        rel = json.loads(urllib.request.urlopen(req, timeout=20).read())
+        tag = rel.get("tag_name", "")
+        if parse_version(tag) <= parse_version(VERSION):
+            return
+        asset = next((a for a in rel.get("assets", []) if a.get("name") == UPDATE_ASSET), None)
+        if not asset:
+            return
+        self.status = f"baixando a versão {tag}..."
+        work = Path(tempfile.gettempdir()) / f"DPSMeterBDO_update_{tag}"
+        zpath = work.with_suffix(".zip")
+        req = urllib.request.Request(asset["browser_download_url"], headers={"User-Agent": "DPSMeterBDO"})
+        zpath.write_bytes(urllib.request.urlopen(req, timeout=300).read())
+        if work.exists():
+            import shutil
+            shutil.rmtree(work, ignore_errors=True)
+        with zipfile.ZipFile(zpath) as z:
+            z.extractall(work)
+        exe = next(work.rglob("DPSMeterBDO.exe"), None)
+        if exe is None:
+            self.status = None
+            return
+        self.ready = (tag, exe.parent)
+        self.status = None
+
+    def apply(self):
+        """Fecha o meter e deixa um script trocar os arquivos e abrir a versão nova."""
+        import os
+        import subprocess
+        import tempfile
+        tag, src = self.ready
+        app_dir = Path(sys.executable).parent
+        exe_name = Path(sys.executable).name
+        bat = Path(tempfile.gettempdir()) / "DPSMeterBDO_atualizar.bat"
+        bat.write_text("\r\n".join([
+            "@echo off",
+            f"set PID={os.getpid()}",
+            ":espera",  # espera o meter fechar para poder trocar os arquivos
+            'tasklist /FI "PID eq %PID%" | find "%PID%" >nul && (timeout /t 1 /nobreak >nul & goto espera)',
+            f'robocopy "{src}" "{app_dir}" /E /R:5 /W:1 /NFL /NDL /NJH /NJS /NP >nul',
+            f'start "" "{app_dir / exe_name}"',
+            'del "%~f0"',
+        ]) + "\r\n", encoding="ascii", errors="replace")
+        subprocess.Popen(["cmd", "/c", str(bat)], creationflags=0x08000000 | 0x00000008,
+                         close_fds=True)  # sem janela, independente do meter
+
+
+UPDATER = None  # criado no main quando é o .exe
+
+
 def npcap_installed():
     import os
     system32 = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32"
@@ -1921,6 +2017,7 @@ def main():
                     help="no replay, velocidade em relação ao tempo real (ex.: 10)")
     ap.add_argument("--sem-janela", action="store_true", help="só gera o resumo")
     ap.add_argument("--esperar", action="store_true", help=argparse.SUPPRESS)
+    ap.add_argument("--testar-atualizacao", action="store_true", help=argparse.SUPPRESS)
     ap.add_argument("--processo", action="append",
                     help="nome do executável do jogo, se for diferente de BlackDesert64.exe")
     args = ap.parse_args()
@@ -1968,6 +2065,10 @@ def main():
 
     if icons_missing():
         threading.Thread(target=download_icons, daemon=True).start()
+    global UPDATER
+    if FROZEN and (not args.replay or args.testar_atualizacao)             and load_config().get("atualizar_sozinho", True):
+        UPDATER = AutoUpdater()
+        UPDATER.start()
 
     restart = False
     try:

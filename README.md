@@ -29,6 +29,9 @@ quanto de dano cada pessoa da sua pt está causando: DPS, dano total, porcentage
 
 Requisitos: Windows 10 ou 11, 64 bits.
 
+**Atualização automática:** a partir da versão 1.3.0, o programa procura versões novas sozinho e se
+atualiza quando você fica uns segundos sem combate, mantendo seus nomes, histórico e configurações.
+
 ---
 
 ## Como usar

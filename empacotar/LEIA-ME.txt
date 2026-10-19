@@ -95,6 +95,14 @@ LIMITAÇÕES
   do meter.
 
 
+ATUALIZAÇÃO AUTOMÁTICA
+----------------------
+O meter procura versões novas no GitHub ao abrir (e de hora em hora). Se houver,
+ele baixa e se atualiza sozinho quando você ficar alguns segundos sem combate,
+mantendo seus nomes, histórico e configurações. Para desligar, coloque
+"atualizar_sozinho": false no config.json.
+
+
 ARQUIVOS QUE ELE CRIA (na mesma pasta)
 --------------------------------------
 - capturas\  : um resumo de cada sessão (resumo.txt) e a lista de golpes.
