@@ -29,7 +29,7 @@ from scapy.all import IP, TCP, PcapReader
 from capture import Capture, MarkerLog, write_info
 
 FROZEN = getattr(sys, "frozen", False)  # rodando como .exe (PyInstaller)
-VERSION = "1.3.1"  # mudar a cada release (o .exe compara com a última release do GitHub)
+VERSION = "1.3.2"  # mudar a cada release (o .exe compara com a última release do GitHub)
 UPDATE_REPO = "Lucas-Amaralz/DPS-Meter-BDO"
 UPDATE_ASSET = "DPS-Meter-BDO.zip"
 UPDATE_CHECK_EVERY = 3600  # s
@@ -52,6 +52,9 @@ OP_PARTY_STATUS = 0x0BD5
 STATUS_ACTOR, STATUS_ENTRY = 52, 53
 OP_PARTY_MEMBER = 0x0ED5
 # Corpo do 0x0ed5 (ficha de quem entra na pt): um bloco igual ao da lista da pt, no +0
+OP_SELF_PROFILE = 0x1A72
+# Corpo do 0x1a72: chega só sobre o próprio jogador, ao entrar no jogo ou trocar de canal;
+# o nome do personagem fica em +65 (UTF-16)
 OP_PROFILE = 0x1771
 # Corpo do 0x1771 (perfil de jogador que aparece por perto): +6 nome (UTF-16), ator no fim
 # Código de classe do jogo = número usado no site oficial (sa.playblackdesert.com/GameInfo/Class,
@@ -194,6 +197,7 @@ class Combat:
         self.player_hp = {}  # vida atual dos jogadores (para o dano de PvP)
         self.known_names, self.known_info = self.load_names_cache()  # ator -> nome / ficha
         self.past_party = {}  # quem saiu da pt (para continuar com nome no ranking)
+        self.self_name = load_config().get("meu_personagem")  # nome do próprio jogador
         self.target_max = {}  # maior vida já vista de cada monstro (para achar boss)
         self.target_hp = {}  # vida mais recente de cada monstro
         self.boss_min_hp = float(load_config().get("vida_minima_boss", BOSS_MIN_HP))
@@ -411,6 +415,13 @@ class Combat:
             return
         if op == OP_PROFILE:
             self.on_profile(m[5:])
+            return
+        if op == OP_SELF_PROFILE:
+            b = m[5:]
+            name = self._utf16(b, 65) if len(b) > 65 + 4 else ""
+            if name and name != self.self_name:
+                self.self_name = name
+                save_config(meu_personagem=name)
             return
         if op == OP_PARTY_MEMBER:
             self.on_party_member(m[5:])
@@ -786,7 +797,7 @@ class Session:
                     or (entry[0] if entry else None))
             info = list(self.combat.known_info.values())
         if not name and self.is_me(actor):
-            name = self.my_name
+            name = self.combat.self_name or self.my_name
         if name:
             for v in reversed(info):
                 if v[0] == name and v[2] is not None:
@@ -832,8 +843,9 @@ class Session:
             known = self.combat.known_names.get(actor)
             left = actor not in self.combat.party and actor in self.combat.past_party
         me = self.is_me(actor)
+        mine = self.combat.self_name or self.my_name
         name = (self.names.get(actor) or self.party_name(actor) or known
-                or (self.my_name if me else None) or ("Você" if me else f"{actor:08x}"))
+                or (mine if me else None) or ("Você" if me else f"{actor:08x}"))
         if me:  # "(você)" só no resumo.txt; na janela o contorno dourado já indica
             return f"{name} (você)" if mark_me else name
         return f"{name} (saiu)" if left else name
