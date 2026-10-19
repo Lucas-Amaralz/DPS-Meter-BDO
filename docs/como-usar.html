@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Como utilizar · DPS Meter BDO</title>
+<meta name="description" content="Como usar o DPS Meter BDO: janela, atalhos, modos PVE, BOSS e PVP, e dicas.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<nav>
+  <div class="wrap">
+    <a class="brand" href="./">DPS Meter <span>BDO</span></a>
+    <a class="tab" href="./">Início</a>
+    <a class="tab active" href="como-usar.html">Como utilizar</a>
+    <a class="tab" href="https://github.com/Lucas-Amaralz/DPS-Meter-BDO">GitHub</a>
+  </div>
+</nav>
+
+<header class="wrap" style="padding-bottom:12px">
+  <h1 style="font-size:clamp(1.8rem,5vw,2.6rem)">Como <span>utilizar</span></h1>
+  <div class="toc" style="justify-content:center">
+    <a href="#primeiros-passos">Primeiros passos</a><a href="#janela">A janela</a><a href="#atalhos">Atalhos</a>
+    <a href="#modos">Modos</a><a href="#numeros">Os números</a><a href="#limitacoes">Limitações</a>
+    <a href="#duvidas">Dúvidas</a><a href="#riscos">Riscos</a>
+  </div>
+</header>
+
+<section class="wrap" id="primeiros-passos">
+  <h2>Primeiros passos</h2>
+  <ul>
+    <li>Abra o <b>DPSMeterBDO.exe</b> e entre no jogo. A janela mostra "procurando o jogo" até encontrar.</li>
+    <li>Para aparecerem os <b>nomes e classes</b> da pt: com o meter aberto, <b>entre na pt</b> ou <b>troque de canal</b>.
+      Quem entrar depois aparece sozinho.</li>
+    <li>O meter <b>descobre sozinho qual linha é você</b> (contorno dourado), mesmo trocando de canal.
+      Se errar: <kbd>ALT</kbd>+<kbd>X</kbd>, botão direito no seu nome, "Sou eu".</li>
+    <li>Na primeira vez ele baixa os ícones das classes do site oficial do BDO. Até lá, aparece a sigla da classe.</li>
+  </ul>
+</section>
+
+<section class="wrap" id="janela">
+  <h2>A janela</h2>
+  <p>Ela é <b>"fantasma"</b>: travada, o mouse passa direto para o jogo e ela <b>nunca rouba o teclado</b>
+    (seu WASD continua funcionando). Pode deixar em cima da tela.</p>
+  <table>
+    <tr><th>Para...</th><th>Faça</th></tr>
+    <tr><td>Destravar e mexer na janela</td><td><kbd>ALT</kbd>+<kbd>X</kbd> (a borda fica dourada; trava sozinha em 15 s)</td></tr>
+    <tr><td>Mover</td><td>arraste pela barra de cima</td></tr>
+    <tr><td>Redimensionar</td><td>arraste o canto de baixo à direita</td></tr>
+    <tr><td>Mudar a opacidade</td><td>barrinha no rodapé</td></tr>
+    <tr><td>Renomear alguém / marcar "Sou eu"</td><td>botão direito no nome</td></tr>
+    <tr><td>Copiar o ranking (chat, Discord)</td><td>botão de copiar no rodapé</td></tr>
+    <tr><td>Ver o histórico de lutas de boss</td><td>botão de relógio no rodapé</td></tr>
+    <tr><td>Reiniciar o meter</td><td>botão de setas em círculo no rodapé</td></tr>
+  </table>
+</section>
+
+<section class="wrap" id="atalhos">
+  <h2>Atalhos</h2>
+  <p class="muted">Funcionam com o jogo em foco e a janela travada.</p>
+  <table>
+    <tr><td><kbd>ALT</kbd>+<kbd>X</kbd></td><td>destravar / travar a janela</td></tr>
+    <tr><td><kbd>ALT</kbd>+<kbd>Z</kbd></td><td>zerar a contagem</td></tr>
+    <tr><td><kbd>ALT</kbd>+<kbd>B</kbd></td><td>alternar entre os modos PVE e BOSS</td></tr>
+  </table>
+  <p class="small">Se algum atalho já for usado por outro programa, troque no arquivo <code>config.json</code> da pasta do meter
+    (<code>atalho</code>, <code>atalho_zerar</code>, <code>atalho_modo</code>).</p>
+</section>
+
+<section class="wrap" id="modos">
+  <h2>Modos</h2>
+  <div class="grid">
+    <div class="card"><h3><span class="pill pve">PVE</span>Caça</h3>
+      <p>Monstros normais. Pausas de mais de 5 s sem golpes não contam, e o DPS de cada um usa só o tempo em
+        que a pessoa estava batendo.</p></div>
+    <div class="card"><h3><span class="pill boss">BOSS</span>Boss e dungeon</h3>
+      <p>Conta só o dano em <b>boss e sub-bosses</b>. A luta começa sozinha no primeiro golpe e, quando o boss morre,
+        o tempo pausa e aparece um resumo.</p></div>
+    <div class="card"><h3><span class="pill pvp">PVP</span>Duelo, arena, guerra</h3>
+      <p>Dano entre jogadores perto de você: causado, recebido e abates/mortes. Inclui quem não é da pt.</p></div>
+  </div>
+  <h3>Detalhes do modo BOSS</h3>
+  <ul>
+    <li>Durante a luta, a linha de cima mostra a <b>vida do boss</b> e o <b>tempo estimado</b> para ele morrer (ex.: <i>Boss 37% ~0:42</i>).</li>
+    <li>Ao derrotar o boss, o <b>resumo</b> mostra tempo, total, DPS da pt e de cada um, dano recebido e mortes,
+      com botões <b>Copiar</b> e <b>Voltar</b>.</li>
+    <li><b>Recordes:</b> o resumo compara com o melhor tempo contra aquele boss (ou mostra NOVO RECORDE) e marca quem
+      bateu o próprio recorde de DPS.</li>
+    <li>Cada luta fica no <b>histórico</b>, com o botão de relógio no rodapé.</li>
+    <li>Adds e mobs comuns (menos de 3 milhões de vida) não entram. Se algum sub-boss tiver menos que isso, ajuste
+      <code>vida_minima_boss</code> no <code>config.json</code>.</li>
+  </ul>
+  <p class="small">Trocar de modo zera a contagem.</p>
+</section>
+
+<section class="wrap" id="numeros">
+  <h2>O que os números querem dizer</h2>
+  <table>
+    <tr><td><b style="color:#ffd36b">1,5M/s</b> (amarelo)</td><td>DPS: dano por segundo. É o melhor número para comparar jogadores.</td></tr>
+    <tr><td>Número menor</td><td>dano total da luta</td></tr>
+    <tr><td>Porcentagem</td><td>quanto do dano da pt foi de cada um</td></tr>
+    <tr><td><span style="color:#ff8a7a">-8,2K</span> (vermelho)</td><td>dano recebido</td></tr>
+    <tr><td>"sem dano"</td><td>a pessoa está na pt, mas não bateu ou está longe de você</td></tr>
+  </table>
+</section>
+
+<section class="wrap" id="limitacoes">
+  <h2>Limitações</h2>
+  <ul>
+    <li>O jogo só manda ao seu computador o que acontece <b>perto de você</b>. Quem bate longe aparece como "sem dano".</li>
+    <li>Em PVE e BOSS só aparecem <b>você e a sua pt</b>.</li>
+    <li>Nomes chegam quando a pessoa <b>entra na pt</b> ou <b>aparece perto</b> com o meter aberto.</li>
+    <li>Se uma atualização do jogo mudar o formato dos dados, o meter pode parar de contar até sair uma versão nova.</li>
+  </ul>
+</section>
+
+<section class="wrap" id="duvidas">
+  <h2>Dúvidas</h2>
+  <details><summary>O Windows disse "O Windows protegeu o computador"</summary>
+    <p>Acontece com programas que não são de uma empresa grande. Clique em <b>Mais informações → Executar assim mesmo</b>.</p></details>
+  <details><summary>O antivírus reclamou</summary>
+    <p>Programas feitos em Python e empacotados como .exe às vezes geram alarme falso. O código é aberto no GitHub.</p></details>
+  <details><summary>Aparecem números no lugar dos nomes</summary>
+    <p>Saia e entre na pt, ou troque de canal, com o meter aberto. O jogo só manda os nomes nesses momentos.</p></details>
+  <details><summary>Não aparece dano nenhum</summary>
+    <p>Confira se a faixa do Npcap sumiu (ele precisa estar instalado) e se você está no modo certo (no BOSS, mobs comuns não contam).</p></details>
+  <details><summary>Como atualizar para uma versão nova?</summary>
+    <p>Baixe o .zip de novo e substitua a pasta. Para manter nomes, ícones e histórico, copie para a pasta nova os arquivos
+      <code>.json</code> e a pasta <code>icones</code>.</p></details>
+</section>
+
+<section class="wrap" id="riscos">
+  <div class="warn">
+    <h2>Riscos</h2>
+    <p><b>Existe risco.</b> Os termos de uso da Pearl Abyss proíbem programas de terceiros que leem dados do jogo, e isso
+      inclui este meter. <b>Use por sua conta e risco</b>, de preferência testando antes numa conta secundária.</p>
+    <p>Por que o risco de detecção é baixo: o meter é <b>100% passivo</b>.</p>
+    <ul>
+      <li><b>Não</b> lê nem altera a memória do jogo, <b>não</b> injeta código, <b>não</b> mexe nos arquivos do BDO.</li>
+      <li><b>Não</b> envia nada ao servidor e <b>não</b> automatiza ações (não é bot nem macro).</li>
+      <li>Só lê <b>cópias</b> do tráfego de rede que já chega ao seu PC, como o Wireshark.</li>
+    </ul>
+    <p>"Difícil de detectar" não é "permitido". O mais comum é alguém ser punido por <b>denúncia</b> ou por
+      <b>prints publicados</b>, então evite postar prints do meter.</p>
+  </div>
+</section>
+
+<footer class="wrap">
+  DPS Meter BDO · projeto independente, sem relação com a Pearl Abyss · Black Desert é marca da Pearl Abyss<br>
+  <a href="https://github.com/Lucas-Amaralz/DPS-Meter-BDO#como-funciona-o-que-foi-feito-passo-a-passo">Como funciona por dentro</a>
+</footer>
+</body>
+</html>
