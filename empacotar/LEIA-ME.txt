@@ -69,6 +69,8 @@ A JANELA
       guerra de nó): DPS, dano causado, dano recebido (em vermelho) e
       abates/mortes. Inclui jogadores de fora da pt. Clique de novo para sair;
     * copiar o ranking para colar no chat ou no Discord.
+- Atalhos rápidos (funcionam com a janela travada): ALT+Z zera a contagem e
+  ALT+B alterna entre PVE e BOSS.
 - ALT+X de novo trava. Se esquecer, ela trava sozinha depois de 15 segundos.
 - Se o ALT+X estiver ocupado por outro programa, o meter usa CTRL+ALT+X
   (o rodapé mostra qual atalho está valendo).

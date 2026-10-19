@@ -42,6 +42,8 @@ Requisitos: Windows 10 ou 11, 64 bits.
 | Copiar o ranking (para colar no chat/Discord) | botão de copiar no rodapé |
 | Renomear alguém, marcar "Sou eu" | botão direito no nome |
 | Opacidade | barrinha no rodapé |
+| Zerar sem destravar | **ALT+Z** |
+| Alternar entre PVE e BOSS | **ALT+B** |
 
 **A janela é "fantasma":** com ela travada, o mouse passa direto para o jogo e ela **nunca** rouba o
 teclado (seu WASD continua funcionando). Você pode deixá-la em cima da tela.
@@ -54,7 +56,9 @@ teclado (seu WASD continua funcionando). Você pode deixá-la em cima da tela.
   de vida; adds e mobs comuns ficam de fora). A luta **começa sozinha** no primeiro golpe da pt num boss,
   o tempo é a luta inteira e, quando o boss morre, **o tempo pausa** e aparece um **resumo** (tempo, DPS
   da pt e de cada um), com botões para copiar e voltar à tela normal. Cada luta fica no **histórico**
-  (botão de relógio no rodapé).
+  (botão de relógio no rodapé). Durante a luta aparece a vida do boss e o tempo estimado para
+  ele morrer; no resumo, o recorde de tempo contra aquele boss, quem bateu o próprio recorde de
+  DPS, o dano que cada um recebeu e as mortes.
 - **PVP**: dano **entre jogadores** perto de você (duelo, arena, guerra de nó), com dano causado,
   dano recebido e abates/mortes.
 

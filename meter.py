@@ -221,6 +221,9 @@ class Combat:
             self.pvp_dmg, self.pvp_taken, self.pvp_hits = Counter(), Counter(), Counter()
             self.pvp_kills, self.pvp_deaths = Counter(), Counter()
             self.pvp_first = self.pvp_last = None
+            self.pve_taken = Counter()  # dano que cada um recebeu de monstros
+            self.deaths = Counter()  # mortes de cada um
+            self.tgt_dmg = Counter()  # dano em cada alvo (para estimar quando o boss morre)
 
     @staticmethod
     def _utf16(b, off, size=64):
@@ -447,6 +450,13 @@ class Combat:
                     self.pvp_last = t
                     if self.pvp_mode:
                         self.last_hit_wall = time.time()
+                elif (prev_p is not None and value < prev_p and who != target
+                      and who not in IGNORED_ATTACKERS
+                      and (not self.boss_mode or self.enc_state == "active")):
+                    self.pve_taken[target] += prev_p - value  # dano de monstro
+                if (prev_p is not None and prev_p > 0 and value <= 0
+                        and (not self.boss_mode or self.enc_state == "active")):
+                    self.deaths[target] += 1
                 return
             self.max_hp[target] = max_hp
             self.target_max[target] = max(self.target_max.get(target, 0), max_hp)
@@ -555,6 +565,7 @@ class Combat:
                 self.active[who] += t - prev_t
             self.last_hit_by[who] = t
             self.damage[who] += dmg
+            self.tgt_dmg[target] += dmg
             self.hits[who] += 1
             self.total_hits += 1
             self.biggest[who] = max(self.biggest[who], dmg)
@@ -588,7 +599,8 @@ class Combat:
                         "dps": d / own, "ativo": self.active[who],
                         "golpes": self.hits[who], "maior": self.biggest[who],
                         "jogador": who in self.players or who in self.party,
-                        "vida_max": self.players.get(who)}
+                        "vida_max": self.players.get(who),
+                        "recebido_pve": self.pve_taken[who], "mortes": self.deaths[who]}
 
             # O ranking é só da pt (sem pt conhecida, fica vazio); quem está fora vai à parte
             in_party = lambda who: (who in self.party or who in self.was_party
@@ -602,11 +614,15 @@ class Combat:
                     and self.self_actor not in self.party:
                 rows.append(row(self.self_actor, 0))
             outside = [row(w, d) for w, d in self.damage.most_common() if not in_party(w)]
-            boss_pct = None
+            boss_pct = eta = None
             if self.boss_mode and self.enc_boss is not None and self._tmax(self.enc_boss):
-                boss_pct = self.target_hp.get(self.enc_boss, 0) / self._tmax(self.enc_boss)
+                hp_now = self.target_hp.get(self.enc_boss, 0)
+                boss_pct = hp_now / self._tmax(self.enc_boss)
+                rate = self.tgt_dmg[self.enc_boss] / dur  # dano por segundo no boss
+                if self.enc_state == "active" and rate > 0 and tempo >= 5:
+                    eta = hp_now / rate
             return {"total": total, "tempo": tempo, "dps": total / dur, "boss": self.boss_mode,
-                    "pvp": False, "luta": self.enc_state, "boss_pct": boss_pct,
+                    "pvp": False, "luta": self.enc_state, "boss_pct": boss_pct, "eta": eta,
                     "ativo": time.time() - self.last_hit_wall < COMBAT_GAP,
                     "golpes": sum(self.hits[w] for w, _ in ranked), "linhas": rows,
                     "fora": outside}
@@ -834,10 +850,23 @@ class Session:
             "tempo": s["tempo"], "total": s["total"], "dps": s["dps"],
             "boss_vida": s.get("boss_vida", 0),
             "linhas": [[self.label(r["ator"]), r["dano"], r["dps"], r["pct"],
-                        self.party_class_code(r["ator"]), self.is_me(r["ator"])]
-                       for r in s["linhas"] if r["dano"] > 0],
+                        self.party_class_code(r["ator"]), self.is_me(r["ator"]),
+                        r.get("recebido_pve", 0), r.get("mortes", 0)]
+                       for r in s["linhas"] if r["dano"] > 0 or r.get("mortes")],
         }
         hist = self.load_history()
+        # recorde: o mesmo boss tem sempre a mesma vida máxima
+        same = [h for h in hist if h.get("boss_vida") and item["boss_vida"]
+                and abs(h["boss_vida"] - item["boss_vida"]) <= 0.005 * item["boss_vida"]]
+        if same:
+            best = min(h["tempo"] for h in same)
+            item["recorde_tempo"] = best
+            best_dps = {}
+            for h in same:
+                for row in h["linhas"]:
+                    best_dps[row[0]] = max(best_dps.get(row[0], 0), row[2])
+            item["recordes_dps"] = [row[0] for row in item["linhas"]
+                                    if row[0] in best_dps and row[2] > best_dps[row[0]]]
         hist.append(item)
         try:
             self.HISTORY.write_text(json.dumps(hist[-self.HISTORY_MAX:], ensure_ascii=False),
@@ -870,6 +899,10 @@ class Session:
                 f"{self.label(r['ator'], True) + tipo:<24}{r['dano']:>16,.0f}{r['pct']:>8.1%}"
                 f"{r['dps']:>14,.0f}{fmt_time(r['ativo']):>8}{r['golpes']:>8}{r['maior']:>14,.0f}{vida:>10}"
             )
+        if not s["pvp"] and any(r.get("recebido_pve") or r.get("mortes") for r in s["linhas"]):
+            lines += ["", "Dano recebido de monstros / mortes:"]
+            lines += [f"  {self.label(r['ator'], True)}: recebeu {r.get('recebido_pve', 0):,.0f}, "
+                      f"{r.get('mortes', 0)} mortes" for r in s["linhas"]]
         if s["pvp"]:
             lines += ["", "PvP (recebido / abates / mortes):"]
             lines += [f"  {self.label(r['ator'], True)}: recebeu {r['recebido']:,.0f}, "
@@ -1302,6 +1335,15 @@ class MeterWindow:
             if hk.ok:
                 self.hotkey = hk
                 break
+        # atalhos rápidos (funcionam com a janela travada): zerar e alternar PVE/BOSS
+        self.extra_hotkeys = []
+        for key, default, action in (("atalho_zerar", "alt+z", self.reset),
+                                     ("atalho_modo", "alt+b", self.toggle_pve_boss)):
+            hk = HotKey(cfg.get(key, default))
+            hk.start()
+            hk.ready.wait(1)
+            if hk.ok:
+                self.extra_hotkeys.append((hk, action))
         self.need_npcap = not npcap_installed()
         self.npcap_state = None  # None, "baixando", "instalando"
         self.set_locked(not self.need_npcap)  # sem Npcap: destravada, para clicar na faixa
@@ -1358,7 +1400,14 @@ class MeterWindow:
         self.root.configure(bg=LINE if locked else GOLD)  # borda dourada = destravado
         self.last_use = time.time()
 
+    def toggle_pve_boss(self):
+        self.set_mode(not self.session.combat.boss_mode, False)
+
     def poll_hotkey(self):
+        for hk, action in self.extra_hotkeys:
+            if hk.pressed.is_set():
+                hk.pressed.clear()
+                action()
         if self.hotkey and self.hotkey.pressed.is_set():
             self.hotkey.pressed.clear()
             if self.typing:
@@ -1459,8 +1508,8 @@ class MeterWindow:
         lines = [f"DPS Meter BDO | {fmt_time(s['tempo'])} | total {fmt(s['total'])} | "
                  f"pt {fmt(s['dps'])}/s"]
         for i, r in enumerate(s["linhas"], 1):
-            lines.append(f"{i}. {self.session.label(r['ator'])}: {fmt(r['dano'])} "
-                         f"({r['pct']:.1%}) {fmt(r['dps'])}/s".replace(".", ","))
+            nums = f"{fmt(r['dano'])} ({r['pct']:.1%}) {fmt(r['dps'])}/s".replace(".", ",")
+            lines.append(f"{i}. {self.session.label(r['ator'])}: {nums}")
         return "\n".join(lines)
 
     def copy_ranking(self):
@@ -1610,6 +1659,8 @@ class MeterWindow:
             extra = "   ·   PAUSADO"
         elif s.get("boss") and s.get("boss_pct") is not None:
             extra = f"   ·   Boss {s['boss_pct']:.0%}"
+            if s.get("eta") is not None:
+                extra += f" ~{fmt_time(s['eta'])}"
         self.totals.config(text=(f"Total {fmt(s['total'])}   ·   DPS {fmt(s['dps'])}/s" + extra)
                            if s["total"] else "Total -")
         with self.session.combat.lock:
@@ -1661,7 +1712,11 @@ class MeterWindow:
                 c.create_image(4, yc, anchor="w", image=self.badge_image(code, color, self.ROW_H - 6))
                 x_name = self.ROW_H + 4
             name_font = ("Segoe UI Semibold", 9)
-            self.text(x_name, yc, self.session.label(actor), MUTED if idle else FG, name_font)
+            t = self.text(x_name, yc, self.session.label(actor), MUTED if idle else FG, name_font)
+            if r.get("mortes"):
+                n = r["mortes"]
+                self.text(c.bbox(t)[2] + 6, yc, f"{n} morte" + ("s" if n > 1 else ""),
+                          "#ff8a7a", (UI, 7, "bold"))
             if idle:
                 self.text(w - 10, yc, "sem dano", MUTED, (UI, 8, "italic"), anchor="e")
                 continue
@@ -1726,8 +1781,14 @@ class MeterWindow:
     def summary_text(self, item):
         lines = [f"DPS Meter BDO | boss {item['quando']} | tempo {fmt_time(item['tempo'])} | "
                  f"total {fmt(item['total'])} | pt {fmt(item['dps'])}/s"]
-        for i, (name, dano, dps, pct, *_ ) in enumerate(item["linhas"], 1):
-            lines.append(f"{i}. {name}: {fmt(dano)} ({pct:.1%}) {fmt(dps)}/s".replace(".", ","))
+        if item.get("recorde_tempo") is not None:
+            lines[0] += f" | recorde {fmt_time(item['recorde_tempo'])}"
+        for i, row in enumerate(item["linhas"], 1):
+            name, dano, dps, pct = row[:4]
+            mortes = row[7] if len(row) >= 8 else 0
+            extra = f" | {mortes} morte" + ("s" if mortes > 1 else "") if mortes else ""
+            nums = f"{fmt(dano)} ({pct:.1%}) {fmt(dps)}/s".replace(".", ",")
+            lines.append(f"{i}. {name}: {nums}{extra}")
         return "\n".join(lines)
 
     def copy_summary(self, item):
@@ -1776,16 +1837,37 @@ class MeterWindow:
         c.create_text(4, 34, anchor="w", fill=FG, font=(NUM, 9),
                       text=f"Tempo {fmt_time(item['tempo'])}   ·   Total {fmt(item['total'])}   ·   "
                            f"DPS pt {fmt(item['dps'])}/s")
-        y = 56
-        for i, (name, dano, dps, pct, code, me) in enumerate(item["linhas"][:max(1, int((h - 56) // 22))]):
+        rec = item.get("recorde_tempo")
+        if rec is None:
+            rec_text, rec_color = "primeira luta registrada contra este boss", MUTED
+        elif item["tempo"] < rec:
+            rec_text, rec_color = f"NOVO RECORDE! (antes {fmt_time(rec)})", GOLD
+        else:
+            rec_text, rec_color = f"Recorde {fmt_time(rec)}   ·   esta run +{fmt_time(item['tempo'] - rec)}", MUTED
+        c.create_text(4, 52, anchor="w", fill=rec_color, font=(UI, 8, "bold"), text=rec_text)
+        y = 74
+        rows = item["linhas"][:max(1, int((h - 74) // 22))]
+        for i, row in enumerate(rows):
+            name, dano, dps, pct, code, me = row[:6]
+            taken, mortes = (row[6], row[7]) if len(row) >= 8 else (0, 0)
             color = self.color_for_class(code)
             rounded(c, 0, y - 10, w, y + 10, 6, fill=blend(color, TRACK, 0.35 if i else 0.6),
                     outline=GOLD if me else "")
             c.create_text(8, y, anchor="w", fill=GOLD if i == 0 else MUTED, font=(NUM, 9, "bold"),
                           text=str(i + 1))
-            c.create_text(24, y, anchor="w", fill=FG, font=("Segoe UI Semibold", 9), text=name)
+            t = c.create_text(24, y, anchor="w", fill=FG, font=("Segoe UI Semibold", 9), text=name)
+            x = c.bbox(t)[2] + 6
+            if name in item.get("recordes_dps", []):
+                t = c.create_text(x, y, anchor="w", fill=GOLD, font=(UI, 7, "bold"), text="recorde")
+                x = c.bbox(t)[2] + 6
+            if mortes:
+                c.create_text(x, y, anchor="w", fill="#ff8a7a", font=(UI, 7, "bold"),
+                              text=f"{mortes} morte" + ("s" if mortes > 1 else ""))
             t = c.create_text(w - 8, y, anchor="e", fill=FG, font=(NUM, 9),
                               text=f"{pct:.1%}".replace(".", ","))
+            if taken:
+                t = c.create_text(c.bbox(t)[0] - 8, y, anchor="e", fill="#ff8a7a", font=(NUM, 8),
+                                  text=f"-{fmt(taken)}")
             t = c.create_text(c.bbox(t)[0] - 10, y, anchor="e", fill="#dfe2e6", font=(NUM, 8),
                               text=fmt(dano))
             c.create_text(c.bbox(t)[0] - 8, y, anchor="e", fill=self.YELLOW, font=(NUM, 9, "bold"),
