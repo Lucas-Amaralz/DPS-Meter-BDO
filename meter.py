@@ -482,7 +482,7 @@ class Combat:
             dmg, value = struct.unpack_from("<ff", b, e + 77)
             if not who or not target or not (0 < dmg < 1e10) or not (0 <= value < 1e12):
                 continue
-            self._vote_self(who, 0.2)
+            self._vote_self(who, 0.5)  # quem aparece batendo aqui é quase sempre você
             with self.lock:
                 if target in self.players:  # golpe em jogador: é PvP, não PvE
                     continue
