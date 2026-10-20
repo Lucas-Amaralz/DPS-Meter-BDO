@@ -29,7 +29,7 @@ from scapy.all import IP, TCP, PcapReader
 from capture import Capture, MarkerLog, write_info
 
 FROZEN = getattr(sys, "frozen", False)  # rodando como .exe (PyInstaller)
-VERSION = "1.3.8"  # mudar a cada release (o .exe compara com a última release do GitHub)
+VERSION = "1.3.9"  # mudar a cada release (o .exe compara com a última release do GitHub)
 UPDATE_REPO = "Lucas-Amaralz/DPS-Meter-BDO"
 UPDATE_ASSET = "DPS-Meter-BDO.zip"
 UPDATE_CHECK_EVERY = 3600  # s
@@ -91,6 +91,7 @@ COMBAT_GAP = 5.0  # segundos sem golpe que não contam como tempo de combate
 BOSS_MIN_HP = 3_000_000
 BOSS_DEATH_FRAC = 0.002  # vida <= 0,2% da máxima = morreu (o golpe final nem sempre chega)
 BOSS_LOW_FRAC, BOSS_IDLE_DEATH = 0.03, 6.0  # ou: < 3% e 6 s sem levar golpe
+BOSS_SWITCH_IDLE = 5.0  # s sem golpe no boss atual para seguir outro boss do mesmo porte
 BOSS_ABANDON = 60.0  # s sem nenhum golpe da pt: luta largada, o relógio para
 UNFINISHED_MIN_TIME = 5.0  # s de combate para guardar no histórico ao zerar/fechar
 
@@ -597,6 +598,12 @@ class Combat:
                     self._reset_counters()  # luta nova (a anterior já foi para o histórico)
                     self.enc_state = "active"
                 if self.enc_boss is None or tmax > self._tmax(self.enc_boss):
+                    self.enc_boss = target
+                elif (target != self.enc_boss and tmax >= 0.5 * self._tmax(self.enc_boss)
+                      and self.enc_boss_t is not None and t - self.enc_boss_t > BOSS_SWITCH_IDLE):
+                    # o boss de antes parou de levar golpe e a pt bate em outro do mesmo porte:
+                    # troca de fase (o jogo cria outro ator) ou o próximo boss da dg
+                    self.dead_bosses.add(self.enc_boss)
                     self.enc_boss = target
                 if target == self.enc_boss:
                     self.enc_boss_t = t
