@@ -7,7 +7,8 @@ $py = Join-Path $root ".venv\Scripts\python.exe"
 Push-Location $root
 & $py -m PyInstaller --noconfirm --onedir --windowed --name DPSMeterBDO `
     --icon (Join-Path $root "empacotar\bdometer.ico") `
-    --collect-all scapy --hidden-import PIL._tkinter_finder `
+    --collect-all scapy --hidden-import PIL._tkinter_finder --hidden-import pystray._win32 `
+    --add-data "$(Join-Path $root 'empacotar\bdometer.ico');." --add-data "$(Join-Path $root 'empacotar\bdometer.png');." `
     --distpath empacotar/dist --workpath empacotar/build --specpath empacotar meter.py
 if ($LASTEXITCODE -ne 0) { throw "PyInstaller falhou" }
 Pop-Location

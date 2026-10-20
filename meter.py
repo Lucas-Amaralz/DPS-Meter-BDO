@@ -29,7 +29,7 @@ from scapy.all import IP, TCP, PcapReader
 from capture import Capture, MarkerLog, write_info
 
 FROZEN = getattr(sys, "frozen", False)  # rodando como .exe (PyInstaller)
-VERSION = "1.3.7"  # mudar a cada release (o .exe compara com a última release do GitHub)
+VERSION = "1.3.8"  # mudar a cada release (o .exe compara com a última release do GitHub)
 UPDATE_REPO = "Lucas-Amaralz/DPS-Meter-BDO"
 UPDATE_ASSET = "DPS-Meter-BDO.zip"
 UPDATE_CHECK_EVERY = 3600  # s
@@ -68,6 +68,8 @@ CLASSES = {
     27: "Cavaleira das Trevas", 28: "Mago", 29: "Arqueiro", 30: "Wu-Sa", 31: "Bruxa",
     32: "Serafim", 33: "Do-Sa", 34: "Deadeye", 35: "Agent",
 }
+# ícone do programa (no .exe vem junto, dentro de _internal)
+RES_DIR = Path(getattr(sys, "_MEIPASS", APP_DIR / "empacotar"))
 ICONS_DIR = APP_DIR / "icones"  # emblemas recortados do site oficial (ver download_icons)
 
 
@@ -1005,6 +1007,7 @@ WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_APPWINDOW = 0x08000000, 0x00000080, 0x
 WS_EX_TRANSPARENT, WS_EX_LAYERED = 0x00000020, 0x00080000
 MOD_ALT, MOD_CONTROL, MOD_SHIFT, MOD_WIN, MOD_NOREPEAT = 0x1, 0x2, 0x4, 0x8, 0x4000
 WM_HOTKEY = 0x0312
+SW_HIDE, SW_SHOWNOACTIVATE = 0, 4
 AUTO_LOCK = 15.0  # segundos destravado sem uso até travar sozinho
 RESTART_CODE = 3  # código de saída que faz o meter.bat abrir o meter de novo
 UPDATE_IDLE = 10.0  # segundos sem combate para aplicar uma atualização sozinho
@@ -1234,10 +1237,19 @@ class NoFocus:
         self.noactivate = True
         self.locked = True
         self._apply()
+        # o Windows só cria o botão da barra de tarefas ao mostrar a janela de novo;
+        # SW_SHOWNOACTIVATE mostra sem tirar o foco do jogo
+        self.user32.ShowWindow(self.hwnd, SW_HIDE)
+        self.user32.ShowWindow(self.hwnd, SW_SHOWNOACTIVATE)
+        self.hidden = False
+
+    def set_hidden(self, hidden):
+        self.hidden = hidden
+        self.user32.ShowWindow(self.hwnd, SW_HIDE if hidden else SW_SHOWNOACTIVATE)
 
     def _apply(self):
         style = self.user32.GetWindowLongW(self.hwnd, GWL_EXSTYLE)
-        style = (style | WS_EX_TOOLWINDOW | WS_EX_LAYERED) & ~WS_EX_APPWINDOW
+        style = (style | WS_EX_APPWINDOW | WS_EX_LAYERED) & ~WS_EX_TOOLWINDOW
         style = style | WS_EX_NOACTIVATE if self.noactivate else style & ~WS_EX_NOACTIVATE
         style = style | WS_EX_TRANSPARENT if self.locked else style & ~WS_EX_TRANSPARENT
         self.user32.SetWindowLongW(self.hwnd, GWL_EXSTYLE, style)
@@ -1303,6 +1315,10 @@ class MeterWindow:
 
         root = self.root = tk.Tk()
         root.title("DPS Meter BDO")
+        try:
+            root.iconbitmap(default=str(RES_DIR / "bdometer.ico"))
+        except tk.TclError:
+            pass
         root.overrideredirect(True)
         root.configure(bg=LINE)
         root.attributes("-topmost", True)
@@ -1403,8 +1419,12 @@ class MeterWindow:
         self.canvas.pack(fill="both", expand=True, padx=6, pady=6)
         self.canvas.bind("<Button-3>", self.open_menu)
         self.canvas.bind("<Button-1>", self.on_canvas_click)
+        self.canvas.bind("<MouseWheel>", self.scroll_guide)
+        self.guide_max = 0
 
         self.nofocus = NoFocus(root)
+        self.tray_actions = queue.Queue()  # cliques no menu da bandeja (vêm de outra thread)
+        self.tray = self.start_tray()
         self.last_use = time.time()
         root.bind_all("<Motion>", lambda e: setattr(self, "last_use", time.time()), add="+")
         root.bind_all("<Button>", lambda e: setattr(self, "last_use", time.time()), add="+")
@@ -1484,7 +1504,48 @@ class MeterWindow:
     def toggle_pve_boss(self):
         self.set_mode(not self.session.combat.boss_mode, False)
 
+    def start_tray(self):
+        """Ícone na área de notificação do Windows, com um menu do meter."""
+        try:
+            import pystray
+            from PIL import Image
+            image = Image.open(RES_DIR / "bdometer.png")
+        except Exception:
+            return None
+        act = lambda name: (lambda icon, item: self.tray_actions.put(name))
+        menu = pystray.Menu(
+            pystray.MenuItem("Mostrar / esconder", act("mostrar"), default=True),
+            pystray.MenuItem("Destravar a janela", act("destravar")),
+            pystray.MenuItem("Zerar a contagem", act("zerar")),
+            pystray.MenuItem("Guia", act("guia")),
+            pystray.Menu.SEPARATOR,
+            pystray.MenuItem(f"Fechar (v{VERSION})", act("fechar")),
+        )
+        icon = pystray.Icon("DPSMeterBDO", image, "DPS Meter BDO", menu)
+        threading.Thread(target=icon.run, daemon=True).start()
+        return icon
+
+    def run_tray_actions(self):
+        while not self.tray_actions.empty():
+            name = self.tray_actions.get()
+            if name == "mostrar":
+                self.nofocus.set_hidden(not self.nofocus.hidden)
+            elif name == "destravar":
+                self.nofocus.set_hidden(False)
+                self.set_locked(False)
+            elif name == "zerar":
+                self.reset()
+            elif name == "guia":
+                self.nofocus.set_hidden(False)
+                self.view = ("guia", 0, 0)
+            elif name == "fechar":
+                self.close()
+                return True
+        return False
+
     def poll_hotkey(self):
+        if self.run_tray_actions():
+            return  # fechou pelo menu da bandeja
         for hk, action in self.extra_hotkeys:
             if hk.pressed.is_set():
                 hk.pressed.clear()
@@ -1602,6 +1663,12 @@ class MeterWindow:
         self.pin_btn.set_active(on)
 
     def close(self):
+        if self.tray:
+            try:
+                self.tray.stop()
+            except Exception:
+                pass
+            self.tray = None
         self.save_unfinished()
         save_config(janela=self.root.geometry(), opacidade=round(self.alpha, 2))
         self.root.destroy()
@@ -1909,43 +1976,79 @@ class MeterWindow:
         self.view = ("historico",)
 
     GUIDE = [
-        ("Atalhos e janela", [
-            ("ALT+X", "destrava a janela para clicar (trava sozinha em 15 s)"),
-            ("ALT+Z", "zera a contagem"),
-            ("ALT+B", "alterna entre PVE e BOSS"),
-            ("Mover", "arraste a barra de cima; o canto de baixo redimensiona"),
-            ("Nome", "botão direito: renomear ou marcar \"Sou eu\""),
-            ("Zerar/fechar", "dois cliques (um clique sem querer não faz nada)"),
-            ("Rodapé", "opacidade, anotação, histórico, copiar e reiniciar"),
+        ("Atalhos", [
+            ("ALT+X", "Destrava a janela para clicar nela. Trava sozinha depois de 15 s."),
+            ("ALT+Z", "Zera a contagem."),
+            ("ALT+B", "Alterna entre os modos PVE e BOSS."),
+            ("Mover", "Arraste pela barra de cima. O canto de baixo muda o tamanho."),
+            ("Botões", "Zerar, reiniciar e fechar pedem dois cliques."),
+            ("Bandeja", "O ícone perto do relógio do Windows mostra, esconde e fecha o meter."),
         ]),
-        ("Modos e dicas", [
-            ("PVE", "monstros normais; pausas de mais de 5 s não contam"),
-            ("BOSS", "só boss (3M+ de vida); tempo = luta inteira"),
-            ("", "quando o boss morre o tempo pausa e sai um resumo"),
-            ("PVP", "dano entre jogadores perto de você"),
-            ("Nomes", "entre na pt ou troque de canal com o meter aberto"),
-            ("Histórico", "zerar, trocar de modo ou fechar guarda a luta"),
-            ("Atualização", "aparece um aviso verde; instala só quando você clica"),
+        ("Modos", [
+            ("PVE", "Monstros normais. Pausas de mais de 5 s sem golpes não contam."),
+            ("BOSS", "Só boss e sub-boss (3M+ de vida). O tempo é a luta inteira."),
+            ("Fim", "Quando o boss morre, o tempo pausa e aparece um resumo."),
+            ("PVP", "Dano entre jogadores perto de você, recebido, abates e mortes."),
+        ]),
+        ("Dicas", [
+            ("Nomes", "Entre na pt ou troque de canal com o meter aberto."),
+            ("Você", "Contorno dourado. Errou? Botão direito no nome e \"Sou eu\"."),
+            ("Histórico", "Botão de relógio. Zerar, trocar de modo ou fechar guarda a luta."),
+            ("Copiar", "Botão do rodapé copia o ranking para o chat ou Discord."),
+            ("Versão", "Aparece no rodapé. Versão nova vem num aviso verde: clique nele."),
         ]),
     ]
 
     def toggle_guide(self):
-        self.view = None if self.view and self.view[0] == "guia" else ("guia", 0)
+        self.view = None if self.view and self.view[0] == "guia" else ("guia", 0, 0)
+
+    def scroll_guide(self, e):
+        if self.view and self.view[0] == "guia":
+            step = -24 if e.delta > 0 else 24
+            self.view = ("guia", self.view[1], max(0, min(self.guide_max, self.view[2] + step)))
+            self.refresh_now()
+
+    def refresh_now(self):
+        """Redesenha já (sem esperar o próximo ciclo), mantendo um só ciclo agendado."""
+        if self.view:
+            c = self.canvas
+            w, h = max(c.winfo_width(), 200), max(c.winfo_height(), 40)
+            c.delete("all")
+            self.draw_view(c, w, h)
 
     def draw_guide(self, c, w, h):
-        page = self.view[1]
-        title, items = self.GUIDE[page]
-        c.create_text(4, 12, text=f"Guia · {title}", anchor="w", fill=GOLD, font=(UI, 10, "bold"))
-        x = self.button(w, 12, "Voltar", self.close_view)
-        other = 1 - page
-        self.button(x - 6, 12, "Próxima" if page == 0 else "Anterior",
-                    lambda: setattr(self, "view", ("guia", other)))
-        y, step = 36, max(14, min(20, (h - 36) / len(items)))
-        for key, text in items:
-            if key:
-                c.create_text(4, y, anchor="w", fill=self.YELLOW, font=(UI, 8, "bold"), text=key)
-            c.create_text(84, y, anchor="w", fill=FG, font=(UI, 8), text=text, width=w - 88)
-            y += step
+        _, page, offset = self.view
+        top = 30
+        # conteúdo primeiro (com rolagem); o cabeçalho é desenhado por cima
+        key_w = 70
+        y = top + 6 - offset
+        for key, text in self.GUIDE[page][1]:
+            t = c.create_text(key_w + 8, y, anchor="nw", fill=FG, font=(UI, 8), text=text,
+                              width=w - key_w - 14)
+            y2 = c.bbox(t)[3]
+            c.tag_lower(rounded(c, 0, y - 5, w, y2 + 5, 6, fill=TRACK, outline=""), t)
+            c.create_text(8, y, anchor="nw", fill=self.YELLOW, font=(UI, 8, "bold"), text=key)
+            y = y2 + 12
+        self.guide_max = max(0, y + offset - h)
+        c.create_rectangle(0, 0, w, top, fill=BG, outline="")
+        # abas do guia
+        x = 4
+        for i, (name, _) in enumerate(self.GUIDE):
+            on = i == page
+            t = c.create_text(x + 8, 13, anchor="w", text=name, font=(UI, 8, "bold"),
+                              fill=GOLD if on else MUTED)
+            x1, _, x2, _ = c.bbox(t)
+            r = c.create_rectangle(x1 - 8, 3, x2 + 8, 23, fill="#3a2a12" if on else "#262a33",
+                                   outline=GOLD if on else LINE)
+            c.tag_lower(r, t)
+            self.view_hits.append((x1 - 8, 3, x2 + 8, 23,
+                                   lambda i=i: setattr(self, "view", ("guia", i, 0))))
+            x = x2 + 14
+        self.button(w, 13, "Voltar", self.close_view)
+        if self.guide_max and offset < self.guide_max:
+            c.create_rectangle(0, h - 16, w, h, fill=BG, outline="")
+            c.create_text(w / 2, h - 8, fill=MUTED, font=(UI, 7),
+                          text="role o mouse para ver mais  ▾")
 
     def close_view(self):
         self.view = None
