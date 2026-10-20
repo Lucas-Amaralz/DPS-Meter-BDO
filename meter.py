@@ -20,7 +20,7 @@ import sys
 import threading
 import time
 import tkinter as tk
-from collections import Counter
+from collections import Counter, defaultdict, deque
 from datetime import datetime
 from pathlib import Path
 
@@ -29,7 +29,7 @@ from scapy.all import IP, TCP, PcapReader
 from capture import Capture, MarkerLog, write_info
 
 FROZEN = getattr(sys, "frozen", False)  # rodando como .exe (PyInstaller)
-VERSION = "1.4.0"  # mudar a cada release (o .exe compara com a última release do GitHub)
+VERSION = "1.4.1"  # mudar a cada release (o .exe compara com a última release do GitHub)
 UPDATE_REPO = "Lucas-Amaralz/DPS-Meter-BDO"
 UPDATE_ASSET = "DPS-Meter-BDO.zip"
 UPDATE_CHECK_EVERY = 3600  # s
@@ -85,6 +85,11 @@ ATTACK_START, ATTACK_ENTRY = 10, 115
 # Mensagens que só o próprio jogador recebe sobre si: (tipo, tamanho do corpo, posição do ator)
 SELF_SIGNALS = {0x141E: (58, 26), 0x1C4B: (243, 0), 0x11D1: (61, 37)}
 IGNORED_ATTACKERS = {0xFFFFFC00}
+# Dano que apareceu na vida do alvo sem mensagem de quem causou (ex.: o Deadeye não gera
+# nenhuma): fica numa linha à parte em vez de ir para quem bateu depois
+UNSEEN_ACTOR = 0xFFFFFFFE
+LUMP_GAP = 1.5  # s sem nenhuma mensagem do alvo antes da queda
+LUMP_FACTOR = 3.0  # queda maior que isso x o golpe típico de quem veio na mensagem
 PARTY_TIMEOUT = 35.0  # s sem o estado da pt (chega a cada ~10 s) = você saiu da pt
 COMBAT_GAP = 5.0  # segundos sem golpe que não contam como tempo de combate
 # Modo BOSS: só contam alvos grandes (boss e sub-bosses); adds e mobs comuns ficam de fora
@@ -210,6 +215,9 @@ class Combat:
         self.boss_min_hp = float(load_config().get("vida_minima_boss", BOSS_MIN_HP))
         self.finished = []  # lutas de boss encerradas (a janela pega e guarda no histórico)
         self.dead_bosses = set()  # bosses que já morreram (não começam luta nova)
+        self.last_seen = {}  # alvo -> horário da última mensagem dele (vida ou golpe)
+        self.recent_drop = defaultdict(lambda: deque(maxlen=12))  # golpes típicos de cada um
+        self.recent_all = deque(maxlen=60)
         self.reset()
         with self.lock:
             self._self_from_party()  # pt guardada + seu nome = já sabe quem é você
@@ -513,6 +521,8 @@ class Combat:
                 return
             self.max_hp[target] = max_hp
             self.target_max[target] = max(self.target_max.get(target, 0), max_hp)
+            gap = t - self.last_seen.get(target, t)
+            self.last_seen[target] = t
             prev = self.hp.get(target, max_hp if seq == 1 else None)
             self.hp[target] = value
             if prev is None or value >= prev or who in IGNORED_ATTACKERS:
@@ -524,6 +534,19 @@ class Combat:
             taken = min(drop, self.explained[target])
             self.explained[target] -= taken
             rest = drop - taken
+            recent = self.recent_drop[who]
+            pool = recent if len(recent) >= 3 else self.recent_all  # sem histórico: o da pt
+            typical = sorted(pool)[len(pool) // 2] if len(pool) >= 3 else None
+            hidden = 0.0
+            if typical and gap > LUMP_GAP and rest > LUMP_FACTOR * typical:
+                # o alvo ficou um tempo sem mensagens e caiu muito de uma vez: o excesso é
+                # de alguém cujo golpe o jogo não manda
+                hidden, rest = rest - typical, typical
+            elif rest >= 1000:  # as quedas de ~15 de vida (efeito por golpe) não contam
+                recent.append(rest)
+                self.recent_all.append(rest)
+        if hidden > 0:
+            self._credit(t, UNSEEN_ACTOR, target, hidden, prev, value, max_hp, seq)
         if rest > 0:
             self._credit(t, who, target, rest, prev, value, max_hp, seq)
 
@@ -546,6 +569,7 @@ class Combat:
                 max_hp = self.max_hp.get(target, 0)
                 if who not in IGNORED_ATTACKERS:
                     self.explained[target] += dmg
+                self.last_seen[target] = t
             if who not in IGNORED_ATTACKERS:
                 self._credit(t, who, target, dmg, value + dmg, value, max_hp, None)
 
@@ -689,7 +713,7 @@ class Combat:
 
             # O ranking é só da pt (sem pt conhecida, fica vazio); quem está fora vai à parte
             in_party = lambda who: (who in self.party or who in self.was_party
-                                    or who == self.self_actor)
+                                    or who == self.self_actor or who == UNSEEN_ACTOR)
             ranked = [(w, d) for w, d in self.damage.most_common() if in_party(w)]
             total = sum(d for _, d in ranked)
             rows = [row(w, d) for w, d in ranked]
@@ -919,6 +943,8 @@ class Session:
             left = actor not in self.combat.party and actor in self.combat.past_party
         me = self.is_me(actor)
         mine = self.combat.self_name or self.my_name
+        if actor == UNSEEN_ACTOR:
+            return "Não identificado"
         name = (self.names.get(actor) or self.party_name(actor) or known
                 or (mine if me else None) or ("Você" if me else f"{actor:08x}"))
         if me:  # "(você)" só no resumo.txt; na janela o contorno dourado já indica
