@@ -10,6 +10,48 @@ quanto de dano cada pessoa da sua pt está causando: DPS, dano total, porcentage
 > **Leia o [aviso sobre riscos](#riscos-leia-antes-de-usar) antes de usar.** Ferramentas de
 > terceiros que leem dados do jogo são proibidas pelos termos de uso da Pearl Abyss.
 
+> **Projeto descontinuado (v1.4.1).** O código continua aqui como registro e portfólio, mas não
+> recebe mais atualizações. O motivo está em [Por que o projeto foi descontinuado](#por-que-o-projeto-foi-descontinuado).
+
+---
+
+## Por que o projeto foi descontinuado
+
+O objetivo era mostrar **quanto cada pessoa da pt causou de dano**. Depois de testes controlados,
+ficou claro que o jogo **não manda essa informação completa** para o computador de cada jogador, e um
+meter passivo (que só lê o tráfego, sem mexer no jogo) não tem como obtê-la de outro jogo.
+
+O que o jogo manda para o seu PC:
+
+- **Os seus golpes, um a um, com o dano exato.** Por isso o seu dano e o seu DPS ficam corretos.
+- **A vida dos monstros e bosses.** Por isso o total da pt e o tempo de luta ficam corretos.
+- **Os golpes dos outros jogadores, só às vezes.** Uma mensagem de vida traz a vida nova do alvo e
+  o nome de *um* jogador. Quando várias pessoas batem ao mesmo tempo, a queda de vida inclui golpes
+  de todas, e não há como saber quanto foi de cada uma.
+
+O teste decisivo foi cada pessoa de uma pt de cinco bater **sozinha**, uma de cada vez, no mesmo
+alvo. Os golpes de Berserker, Wukong e Wu-Sa apareceram normalmente. Já os golpes do **Deadeye**
+não geraram **nenhuma mensagem** em 12 segundos de ataque: nem de golpe, nem de vida do alvo, nem
+cifrada. O dano dele só apareceu depois, somado ao primeiro golpe da pessoa seguinte. Em outra luta,
+o Wukong também ficou invisível o tempo todo. Ou seja, depende da classe e da situação.
+
+O dano conta normalmente **dentro do jogo**: o boss perde a vida certa e morre no tempo certo. O que
+falta é o jogo avisar ao seu PC *de quem* foi cada golpe. Sem isso:
+
+| Informação | Confiável? |
+|---|---|
+| Seu dano e seu DPS | sim, golpe a golpe |
+| Total da pt, tempo de luta, vida do boss | sim |
+| Nomes, classes e quem está na pt | sim |
+| Dano de cada um dos outros | **não**: aproximado, e às vezes vai para quem bateu depois |
+
+A última versão já separa parte desse dano numa linha "Não identificado", mas, com todos batendo
+juntos, não há como separar. Como o ranking da pt era o objetivo principal, o projeto foi encerrado.
+
+A alternativa seria cada pessoa da pt rodar o meter e os meters trocarem entre si o dano exato de
+cada um pela internet. Isso funcionaria, mas só para quem tivesse o meter aberto, e deixaria de ser
+um programa 100% passivo.
+
 ---
 
 ## Como baixar e instalar (passo a passo)

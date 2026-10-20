@@ -23,9 +23,34 @@
     <b>DPS</b>, o <b>dano total</b> e a <b>classe</b> de cada pessoa da sua pt.</p>
   <a class="btn" href="https://github.com/Lucas-Amaralz/DPS-Meter-BDO/releases/latest/download/DPS-Meter-BDO.zip">Baixar para Windows</a>
   <div class="small">Windows 10/11 · gratuito · <a href="como-usar.html">como utilizar</a></div>
+  <div class="small"><b style="color:var(--gold)">Projeto descontinuado</b> · <a href="#descontinuado">entenda o motivo</a></div>
   <img class="shot" src="img/meter.png" alt="Janela do DPS Meter BDO com o dano de cada jogador (exemplo)" width="380" height="250">
   <div class="small">Exemplo com nomes fictícios</div>
 </header>
+
+<section class="wrap" id="descontinuado">
+  <div class="warn">
+    <h2>Projeto descontinuado</h2>
+    <p>O objetivo era mostrar quanto <b>cada pessoa da pt</b> causou de dano. Os testes mostraram que o jogo
+      <b>não manda essa informação completa</b> para o computador de cada jogador, então o ranking da pt não fica
+      confiável. O código continua público como registro, mas não recebe mais atualizações.</p>
+    <table>
+      <tr><th>Informação</th><th>Confiável?</th></tr>
+      <tr><td>Seu dano e seu DPS</td><td>sim, golpe a golpe</td></tr>
+      <tr><td>Total da pt, tempo de luta, vida do boss</td><td>sim</td></tr>
+      <tr><td>Nomes, classes e quem está na pt</td><td>sim</td></tr>
+      <tr><td>Dano de cada um dos outros</td><td><b>não</b>: aproximado</td></tr>
+    </table>
+    <p><b>Por quê:</b> o jogo manda ao seu PC os <b>seus</b> golpes com o dano exato e a <b>vida</b> dos monstros,
+      mas os golpes dos outros jogadores só às vezes. Uma mensagem de vida traz a vida nova do alvo e o nome de
+      <i>um</i> jogador; quando várias pessoas batem juntas, a queda inclui o golpe de todas. Num teste em que cada
+      pessoa bateu <b>sozinha</b> no mesmo alvo, Berserker, Wukong e Wu-Sa apareceram normalmente, mas os golpes do
+      <b>Deadeye</b> não geraram nenhuma mensagem em 12 segundos. O dano dele só apareceu somado ao golpe da pessoa
+      seguinte.</p>
+    <p class="small" style="margin:0">Dentro do jogo, todo dano conta normalmente. O que falta é o jogo avisar ao seu PC
+      <i>de quem</i> foi cada golpe, e um programa passivo, que só lê o tráfego, não tem como obter isso de outro jeito.</p>
+  </div>
+</section>
 
 <section class="wrap">
   <h2>Como instalar</h2>
