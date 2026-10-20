@@ -29,7 +29,7 @@ from scapy.all import IP, TCP, PcapReader
 from capture import Capture, MarkerLog, write_info
 
 FROZEN = getattr(sys, "frozen", False)  # rodando como .exe (PyInstaller)
-VERSION = "1.3.9"  # mudar a cada release (o .exe compara com a última release do GitHub)
+VERSION = "1.4.0"  # mudar a cada release (o .exe compara com a última release do GitHub)
 UPDATE_REPO = "Lucas-Amaralz/DPS-Meter-BDO"
 UPDATE_ASSET = "DPS-Meter-BDO.zip"
 UPDATE_CHECK_EVERY = 3600  # s
@@ -83,7 +83,7 @@ OP_ATTACK = 0x16BC
 # +77 f32 dano do golpe, +81 f32 vida do alvo depois do golpe
 ATTACK_START, ATTACK_ENTRY = 10, 115
 # Mensagens que só o próprio jogador recebe sobre si: (tipo, tamanho do corpo, posição do ator)
-SELF_SIGNALS = {0x141E: (58, 26), 0x1C4B: (243, 0)}
+SELF_SIGNALS = {0x141E: (58, 26), 0x1C4B: (243, 0), 0x11D1: (61, 37)}
 IGNORED_ATTACKERS = {0xFFFFFC00}
 PARTY_TIMEOUT = 35.0  # s sem o estado da pt (chega a cada ~10 s) = você saiu da pt
 COMBAT_GAP = 5.0  # segundos sem golpe que não contam como tempo de combate
@@ -211,6 +211,8 @@ class Combat:
         self.finished = []  # lutas de boss encerradas (a janela pega e guarda no histórico)
         self.dead_bosses = set()  # bosses que já morreram (não começam luta nova)
         self.reset()
+        with self.lock:
+            self._self_from_party()  # pt guardada + seu nome = já sabe quem é você
 
     def reset(self):
         with self.lock:
@@ -292,6 +294,7 @@ class Combat:
             self.known_names[actor] = info[0]
             if actor in self.party:
                 self.party[actor] = info
+                self._self_from_party()
             party, names = dict(self.party), dict(self.known_names)
         self.save_party_cache(party)
         self.save_names_cache(names)
@@ -328,6 +331,18 @@ class Combat:
             if a not in party:
                 self.past_party[a] = entry
         self.party = party
+        self._self_from_party()
+
+    def _self_from_party(self):
+        """Com o seu nome conhecido, o membro da pt com esse nome é você (lock já pego)."""
+        if not self.self_name:
+            return
+        for a, entry in self.party.items():
+            if entry[0]:
+                self.known_names.setdefault(a, entry[0])
+            if entry[0] == self.self_name:
+                self.self_votes[a] = max(self.self_votes[a], 10.0)
+                self.self_actor = a
 
     def on_party_status(self, b):
         """Atualiza quem está na pt: entra quem aparece, sai quem sumiu."""
@@ -367,6 +382,9 @@ class Combat:
             if self.known_names.get(actor) == name:
                 return
             self.known_names[actor] = name
+            if actor in self.party and not self.party[actor][0]:
+                self.party[actor] = (name,) + self.party[actor][1:]
+                self._self_from_party()
             if self.self_name and name == self.self_name:
                 self.self_votes[actor] += 5
                 self.self_actor = actor
@@ -439,6 +457,8 @@ class Combat:
             if name and name != self.self_name:
                 self.self_name = name
                 save_config(meu_personagem=name)
+                with self.lock:
+                    self._self_from_party()
             return
         if op == OP_PARTY_MEMBER:
             self.on_party_member(m[5:])
